@@ -32,6 +32,33 @@ def test_clip_exactly_at_limit_unchanged():
     assert not out.endswith("…")
 
 
+def test_clip_never_splits_a_multibyte_char():
+    # Regression: clip() muss auf CODEPOINT-Ebene kappen, nie mitten in einem
+    # Mehrbyte-Zeichen. (Das einst gemeldete "Write-Ho<mojibake>" war ein
+    # PowerShell-cp1252-Konsolen-Rendering von U+2026, KEIN Datenfehler — diese
+    # Invariante schreibt fest, dass die Daten byte-sauber bleiben.)
+    long = "ä" * 500  # je 2 Bytes in UTF-8
+    out = track.clip(long)
+    assert len(out) <= track.MAX_LEN
+    assert out.endswith("…")
+    # Kern: das Resultat ist verlustfrei UTF-8-roundtrip-bar (kein halbes Zeichen)
+    assert out == out.encode("utf-8").decode("utf-8")
+    # und enthält nur vollständige ä plus das Ellipsis
+    assert set(out[:-1]) == {"ä"}
+
+
+def test_clip_result_is_valid_utf8_for_astral_chars():
+    # Astral-Plane-Zeichen (Emoji, 4 Bytes in UTF-8 / Surrogate-Paar-Risiko):
+    # auch hier darf clip nie ein Codepoint zerschneiden.
+    long = "😀" * 200
+    out = track.clip(long)
+    assert len(out) <= track.MAX_LEN
+    assert out.endswith("…")
+    # roundtrip beweist: jedes verbleibende Zeichen ist ein vollständiges Codepoint
+    assert out.encode("utf-8").decode("utf-8") == out
+    assert set(out[:-1]) == {"😀"}
+
+
 def test_redact_then_clip_composition():
     # Langer String mit Secret: Ergebnis bleibt ≤ MAX_LEN UND redacted
     raw = "api_key=" + "a" * 300
