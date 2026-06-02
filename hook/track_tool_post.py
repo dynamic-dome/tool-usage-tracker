@@ -13,9 +13,6 @@ _spec = importlib.util.spec_from_file_location("track_tool_use", _PRE)
 _pre = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_pre)
 
-AGENT = "claude-code"
-SCHEMA_V = 2
-
 
 def _derive_ok_and_error(raw: dict):
     """Erfolg primär aus hook_event_name, Fallback auf exit_code.
@@ -53,8 +50,8 @@ def build_post_event(raw: dict) -> dict:
     return {
         "ts_utc": now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z",
         "ts_local": now_local.strftime("%Y-%m-%d %H:%M:%S"),
-        "agent": AGENT,
-        "schema_v": SCHEMA_V,
+        "agent": _pre.AGENT,
+        "schema_v": _pre.SCHEMA_V,
         "phase": "post",
         "tool_name": raw.get("tool_name") or "unknown",
         "session_id": raw.get("session_id", ""),
