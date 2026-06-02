@@ -58,7 +58,7 @@ def _duration_ms(start_ts, end_ts):
         return None
 
 
-def _paired_span(pre, post):
+def _paired_span(pre, post, method):
     return {
         "tool_name": pre.get("tool_name"), "agent": pre.get("agent"),
         "session_id": pre.get("session_id"), "project": pre.get("project"),
@@ -66,6 +66,9 @@ def _paired_span(pre, post):
         "ts_start": pre.get("ts_utc"), "ts_end": post.get("ts_utc"),
         "duration_ms": _duration_ms(pre.get("ts_utc", ""), post.get("ts_utc", "")),
         "ok": post.get("ok"), "error": post.get("error", ""), "paired": True,
+        "pairing_method": method,
+        "pairing_confidence": "exact" if method == "tool_use_id" else "fallback",
+        "orphan_kind": "",
     }
 
 
@@ -76,7 +79,8 @@ def _orphan_post_span(ev):
         "summary": None, "cwd": None,
         "ts_start": None, "ts_end": ev.get("ts_utc"),
         "duration_ms": None, "ok": None, "error": ev.get("error", ""),
-        "paired": False,
+        "paired": False, "pairing_method": "orphan",
+        "pairing_confidence": "none", "orphan_kind": "post_without_pre",
     }
 
 
@@ -87,6 +91,8 @@ def _unpaired_pre_span(pre):
         "summary": pre.get("summary"), "cwd": pre.get("cwd"),
         "ts_start": pre.get("ts_utc"), "ts_end": None,
         "duration_ms": None, "ok": None, "error": "", "paired": False,
+        "pairing_method": "orphan", "pairing_confidence": "none",
+        "orphan_kind": "pre_without_post",
     }
 
 
@@ -120,7 +126,7 @@ def pair_events(events):
         if match is not None:
             consumed.add(id(match))
             consumed.add(id(ev))
-            spans.append(_paired_span(match, ev))
+            spans.append(_paired_span(match, ev, "tool_use_id"))
         # kein id-Pre gefunden -> Post bleibt für FIFO/Orphan-Pass übrig
 
     # --- Pass 2: FIFO über die noch nicht verbrauchten Events ---
@@ -138,7 +144,7 @@ def pair_events(events):
         match = next((p for p in queue if id(p) not in used_pre), None)
         if match is not None:
             used_pre.add(id(match))
-            spans.append(_paired_span(match, ev))
+            spans.append(_paired_span(match, ev, "fifo"))
         else:
             spans.append(_orphan_post_span(ev))
 
@@ -148,6 +154,22 @@ def pair_events(events):
             if id(pre) not in used_pre:
                 spans.append(_unpaired_pre_span(pre))
     return spans
+
+
+def pairing_summary(spans):
+    from collections import Counter
+    total = len(spans)
+    paired = len([s for s in spans if s.get("paired")])
+    methods = Counter(s.get("pairing_method", "unknown") for s in spans)
+    orphans = Counter(s.get("orphan_kind") for s in spans if s.get("orphan_kind"))
+    return {
+        "spans": total,
+        "paired": paired,
+        "unpaired": total - paired,
+        "pairing_rate": paired / total if total else 0.0,
+        "by_method": dict(methods),
+        "orphans": dict(orphans),
+    }
 
 
 def _paired_with_ok(spans):

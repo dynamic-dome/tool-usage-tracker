@@ -30,6 +30,35 @@ def test_spans_json_pairs_events(tmp_path):
     assert payload["spans"][0]["duration_ms"] == 200
     assert "success_by_tool" in payload
     assert payload["success_by_tool"]["Bash"] == 1.0
+    assert payload["pairing"] == {
+        "spans": 1,
+        "paired": 1,
+        "unpaired": 0,
+        "pairing_rate": 1.0,
+        "by_method": {"fifo": 1},
+        "orphans": {},
+    }
+
+
+def test_spans_payload_exposes_pairing_diagnostics(tmp_path):
+    p = _write(tmp_path, [
+        {"phase": "pre", "session_id": "s1", "tool_name": "Bash",
+         "tool_use_id": "id1", "ts_utc": "2026-06-02T10:00:00.000Z",
+         "project": "P", "cwd": "c", "summary": "x", "agent": "codex"},
+        {"phase": "post", "session_id": "s1", "tool_name": "Bash",
+         "tool_use_id": "id1", "ts_utc": "2026-06-02T10:00:00.200Z",
+         "ok": True, "error": "", "agent": "codex"},
+        {"phase": "pre", "session_id": "s2", "tool_name": "Read",
+         "ts_utc": "2026-06-02T10:01:00.000Z", "project": "P",
+         "cwd": "c", "summary": "y", "agent": "codex"},
+    ])
+    payload = srv.spans_payload(str(p), {})
+    assert payload["pairing"]["spans"] == 2
+    assert payload["pairing"]["paired"] == 1
+    assert payload["pairing"]["unpaired"] == 1
+    assert payload["pairing"]["pairing_rate"] == 0.5
+    assert payload["pairing"]["by_method"] == {"tool_use_id": 1, "orphan": 1}
+    assert payload["pairing"]["orphans"] == {"pre_without_post": 1}
 
 
 def test_spans_json_respects_exclude_self(tmp_path):
@@ -134,6 +163,12 @@ def test_parse_query_flags():
     assert params["since"] == "2026-06-01"
 
 
+def test_live_dashboard_template_mentions_pairing_quality():
+    html = srv.index_html()
+    assert "Pairing-Rate" in html
+    assert "Unpaired" in html
+
+
 def test_spans_payload_error_does_not_crash_handler(tmp_path, monkeypatch):
     # spans_payload raises -> do_GET should send a 500 JSON, not propagate
     import io
@@ -159,3 +194,22 @@ def test_spans_payload_error_does_not_crash_handler(tmp_path, monkeypatch):
     assert captured["code"] == 500
     body = h.wfile.getvalue().decode("utf-8")
     assert "error" in body
+
+
+def test_favicon_request_returns_no_content():
+    import io
+
+    Handler = srv.make_handler("dummy-path")
+    captured = {}
+
+    class FakeHandler(Handler):
+        def __init__(self):
+            self.path = "/favicon.ico"
+            self.wfile = io.BytesIO()
+        def send_response(self, code): captured["code"] = code
+        def send_header(self, *a, **k): pass
+        def end_headers(self): pass
+
+    h = FakeHandler()
+    h.do_GET()
+    assert captured["code"] == 204

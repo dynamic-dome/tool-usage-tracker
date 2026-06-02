@@ -35,3 +35,16 @@
   - Hooks erkennen Codex-Payloads über `model` und schreiben `agent:"codex"`.
   - `apply_patch` bekommt eine sanitisierte Summary; Claude-Code-Verhalten bleibt
     unverändert. 78 Tests grün.
+- Analyse-/Produktbericht ergänzt:
+  - `docs/reports/2026-06-02-hook-integration-and-product-analysis.md` dokumentiert
+    Projektmodell, lokale Verifikation, echten `codex exec`-Smoke, Dashboard-Kritik,
+    Hook-Ideen nach Anwendung und priorisierten Architektur-Backlog.
+  - `docs/PROJECT.md` und `docs/CAPABILITIES.md` auf Schema-v2/PostToolUse/Live-Server
+    aktualisiert.
+- P0 aus Analysebericht teilweise umgesetzt:
+  - `pair_events()` liefert Pairing-Metadaten (`pairing_method`,
+    `pairing_confidence`, `orphan_kind`) plus `pairing_summary()`.
+  - `/api/spans` liefert Pairing-Diagnostics; Live-Dashboard zeigt Total Events,
+    Spans, Paired, Unpaired und Pairing-Rate.
+  - `analysis/report.py` nutzt standardmäßig Spans mit Pairing-/Dauer-/Erfolg-/
+    Failure-Sektionen; `--raw-events` behält die alte Roh-Event-Sicht.

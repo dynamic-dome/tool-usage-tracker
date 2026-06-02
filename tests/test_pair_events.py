@@ -30,6 +30,8 @@ def test_pairs_pre_and_post_into_span():
     assert s["ok"] is True
     assert s["tool_name"] == "Bash"
     assert s["project"] == "P"  # aus dem Pre-Event übernommen
+    assert s["pairing_method"] == "fifo"
+    assert s["pairing_confidence"] == "fallback"
 
 
 def test_fifo_same_tool_twice():
@@ -52,6 +54,8 @@ def test_unpaired_pre_is_kept_but_marked():
     assert spans[0]["paired"] is False
     assert spans[0]["duration_ms"] is None
     assert spans[0]["ok"] is None
+    assert spans[0]["pairing_method"] == "orphan"
+    assert spans[0]["orphan_kind"] == "pre_without_post"
 
 
 def test_schema_v1_event_without_phase_treated_as_pre():
@@ -69,6 +73,7 @@ def test_post_only_session_does_not_cross_sessions():
     spans = load.pair_events(evs)
     # Pre s1 ungepaart, Post s2 verwaist -> beide da, beide unpaired
     assert all(s["paired"] is False for s in spans)
+    assert {s["orphan_kind"] for s in spans} == {"pre_without_post", "post_without_pre"}
 
 
 def _span(tool, ok, dur, project="P", agent="claude-code", cwd="c"):
@@ -139,9 +144,12 @@ def test_pairs_by_tool_use_id_when_posts_out_of_order():
     paired = {s["summary"]: s for s in spans if s["paired"]}
     assert paired["A"]["ok"] is True
     assert paired["A"]["duration_ms"] == 900
+    assert paired["A"]["pairing_method"] == "tool_use_id"
+    assert paired["A"]["pairing_confidence"] == "exact"
     assert paired["B"]["ok"] is False
     assert paired["B"]["error"] == "b failed"
     assert paired["B"]["duration_ms"] == 100
+    assert paired["B"]["pairing_method"] == "tool_use_id"
 
 
 def test_id_pairing_falls_back_to_fifo_when_no_id():

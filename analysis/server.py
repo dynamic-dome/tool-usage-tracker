@@ -10,7 +10,7 @@ import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from _load import (load_events, pair_events, success_rate_by,
+from _load import (load_events, pair_events, pairing_summary, success_rate_by,
                    duration_stats_by, path_activity)
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,6 +58,7 @@ def spans_payload(data_path, params):
         "success_by_project": success_rate_by(spans, "project"),
         "duration_by_tool": duration_stats_by(spans, "tool_name"),
         "path_activity": path_activity(spans),
+        "pairing": pairing_summary(spans),
     }
 
 
@@ -82,6 +83,9 @@ def make_handler(data_path):
                     self._send(500, json.dumps({"error": str(e)}))
             elif parsed.path == "/":
                 self._send(200, index_html(), "text/html")
+            elif parsed.path == "/favicon.ico":
+                self.send_response(204)
+                self.end_headers()
             else:
                 self._send(404, json.dumps({"error": "not found"}))
     return Handler
@@ -222,6 +226,7 @@ function buildQuery(){
 
 function renderKPIs(data){
   var spans = data.spans || [];
+  var pairing = data.pairing || {};
   var withOk = spans.filter(function(s){ return s.ok !== null && s.ok !== undefined; });
   var okCount = withOk.filter(function(s){ return s.ok === true; }).length;
   var rate = withOk.length ? (okCount / withOk.length * 100) : 0;
@@ -232,7 +237,11 @@ function renderKPIs(data){
   var avg = durs.length ? Math.round(durs.reduce(function(a, b){ return a + b; }, 0) / durs.length) : 0;
   var p95 = durs.length ? durs[Math.min(durs.length - 1, Math.floor(durs.length * 0.95))] : 0;
   var rows = [
-    ['Paired Calls', data.count != null ? data.count : 0],
+    ['Total Events', data.total_events != null ? data.total_events : 0],
+    ['Spans', pairing.spans != null ? pairing.spans : spans.length],
+    ['Paired', pairing.paired != null ? pairing.paired : (data.count != null ? data.count : 0)],
+    ['Unpaired', pairing.unpaired != null ? pairing.unpaired : 0],
+    ['Pairing-Rate', ((pairing.pairing_rate || 0) * 100).toFixed(1) + '%'],
     ['Erfolgsrate', rate.toFixed(1) + '%'],
     ['&#216; Dauer (alle)', avg + ' ms'],
     ['p95 Dauer (alle)', p95 + ' ms']
