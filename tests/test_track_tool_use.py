@@ -1,4 +1,5 @@
 import importlib.util
+import os
 from pathlib import Path
 
 HOOK = Path(__file__).resolve().parents[1] / "hook" / "track_tool_use.py"
@@ -63,3 +64,26 @@ def test_summary_mcp_tool_has_no_input():
 
 def test_summary_unknown_tool_empty():
     assert track.build_summary("SomethingNew", {"weird": "data"}) == ""
+
+
+def test_derive_project_basename():
+    assert track.derive_project(r"C:\Users\domes\AI\Hooks-bau") == "Hooks-bau"
+
+
+def test_derive_project_fallback_unknown():
+    assert track.derive_project("") == "unknown"
+    assert track.derive_project(None) == "unknown"
+
+
+def test_events_path_uses_env_override(tmp_path, monkeypatch):
+    target = tmp_path / "ev.jsonl"
+    monkeypatch.setenv("TOOL_TRACKER_DATA", str(target))
+    assert track._events_path() == target
+
+
+def test_events_path_is_lazy(tmp_path, monkeypatch):
+    monkeypatch.setenv("TOOL_TRACKER_DATA", str(tmp_path / "a.jsonl"))
+    first = track._events_path()
+    monkeypatch.setenv("TOOL_TRACKER_DATA", str(tmp_path / "b.jsonl"))
+    second = track._events_path()
+    assert first != second  # frisch gelesen, nicht eingefroren

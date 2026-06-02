@@ -1,6 +1,8 @@
 """PreToolUse-Hook: zeichnet jede Tool-Anwendung als JSONL-Zeile auf.
 Darf NIE blockieren — alles in try/except, immer exit 0."""
+import os
 import re
+from pathlib import Path
 
 MAX_LEN = 120
 
@@ -49,3 +51,18 @@ def build_summary(tool_name: str, tool_input: dict) -> str:
     if tool_name == "WebSearch":
         return clip(redact(str(tool_input.get("query", ""))))
     return ""
+
+
+def derive_project(cwd) -> str:
+    if not cwd:
+        return "unknown"
+    name = Path(str(cwd)).name
+    return name or "unknown"
+
+
+def _events_path() -> Path:
+    """LAZY: liest Env bei JEDEM Aufruf frisch, nie als Konstante einfrieren."""
+    override = os.environ.get("TOOL_TRACKER_DATA")
+    if override:
+        return Path(override)
+    return Path(__file__).resolve().parents[1] / "data" / "events.jsonl"
