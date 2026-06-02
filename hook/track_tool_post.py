@@ -1,6 +1,8 @@
 """PostToolUse/-Failure-Hook: zeichnet Erfolg/Fehler je Tool-Call auf.
-Darf NIE blockieren — alles in try/except, immer exit 0.
-Wiederverwendet redact/clip/_events_path aus track_tool_use.py."""
+Result kommt im realen Feld `tool_response` (Fallback tool_output/tool_error
+fürs separate PostToolUseFailure-Event). Darf NIE blockieren — alles in
+try/except, immer exit 0. Wiederverwendet redact/clip/_events_path aus
+track_tool_use.py."""
 import importlib.util
 import json
 import sys
@@ -15,30 +17,49 @@ _spec.loader.exec_module(_pre)
 
 
 def _derive_ok_and_error(raw: dict):
-    """Erfolg primär aus hook_event_name, Fallback auf exit_code.
-    Gegen reales Payload verifizieren (P006) — Schema ist undokumentiert."""
-    event = str(raw.get("hook_event_name", "PostToolUse"))
-    out = raw.get("tool_output") or {}
-    err_obj = raw.get("tool_error") or {}
-    exit_code = None
-    if isinstance(out, dict):
-        exit_code = out.get("exit_code")
-    if exit_code is None and isinstance(err_obj, dict):
-        exit_code = err_obj.get("exit_code")
+    """Erfolg/Fehler aus dem REALEN PostToolUse-Schema ableiten, defensiv (P006).
 
-    is_fail = event.endswith("Failure") or (isinstance(exit_code, int) and exit_code != 0)
+    Ground-truth: das Result steckt in `tool_response` (dict). Ein separates
+    PostToolUseFailure-Event KANN stattdessen `tool_output`/`tool_error` tragen
+    — daher als Fallback behandeln, nicht darauf wetten. Das exakte Schema ist
+    teils undokumentiert (uneinig, ob Bash exit_code mitliefert), deshalb mehrere
+    Fehlersignale prüfen statt auf ein einziges Feld zu setzen."""
+    event = str(raw.get("hook_event_name", "PostToolUse"))
+    # Result-Dict: tool_response primär, dann tool_output, dann tool_error.
+    result = raw.get("tool_response")
+    if not isinstance(result, dict):
+        result = raw.get("tool_output")
+    if not isinstance(result, dict):
+        result = raw.get("tool_error")
+    if not isinstance(result, dict):
+        result = {}
+
+    exit_code = result.get("exit_code")
+    is_error = bool(result.get("is_error"))
+    interrupted = bool(result.get("interrupted"))
+
+    is_fail = (
+        event.endswith("Failure")
+        or is_error
+        or interrupted
+        or (isinstance(exit_code, int) and not isinstance(exit_code, bool) and exit_code != 0)
+    )
     if not is_fail:
         return True, ""
 
-    # Fehlertext sammeln: tool_error.stderr > tool_output.stderr > generisch
-    raw_err = ""
-    if isinstance(err_obj, dict):
-        raw_err = str(err_obj.get("stderr") or err_obj.get("type") or "")
-    if not raw_err and isinstance(out, dict):
-        raw_err = str(out.get("stderr") or "")
+    # Fehlertext-Präzedenz: stderr > text(bei is_error) > generisch.
+    raw_err = str(result.get("stderr") or "")
+    if not raw_err and is_error:
+        raw_err = str(result.get("text") or "")
     if not raw_err:
-        raw_err = f"exit_code={exit_code}" if exit_code is not None else "error"
-    return False, _pre.clip(_pre.redact(raw_err.splitlines()[0] if raw_err else raw_err))
+        if isinstance(exit_code, int) and not isinstance(exit_code, bool):
+            raw_err = f"exit_code={exit_code}"
+        elif interrupted:
+            raw_err = "interrupted"
+        else:
+            raw_err = "error"
+    first_line = raw_err.splitlines()[0] if raw_err else raw_err
+    return False, _pre.clip(_pre.redact(first_line))
 
 
 def build_post_event(raw: dict) -> dict:
@@ -55,6 +76,7 @@ def build_post_event(raw: dict) -> dict:
         "phase": "post",
         "tool_name": raw.get("tool_name") or "unknown",
         "session_id": raw.get("session_id", ""),
+        "tool_use_id": raw.get("tool_use_id", ""),
         "ok": ok,
         "error": error,
     }
