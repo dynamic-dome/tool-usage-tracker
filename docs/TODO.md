@@ -29,6 +29,20 @@ dass das Script läuft. → Idee: Smoke-Test in dashboard.py-Workflow um node-ch
 ergänzen.
 
 ## Iteration 2 (aus Design-Doc §2 Nicht-Ziele)
-- PostToolUse-Hook für Dauer/Erfolg/Fehler (Korrelation via session_id+tool)
-- Codex- & andere-Agent-Adapter (schreiben ins selbe JSONL, anderer `agent`-Wert)
-- Interaktives Server-Dashboard (Streamlit/Dash)
+- ✅ **PostToolUse/-Failure-Hook** für Dauer/Erfolg/Fehler (`hook/track_tool_post.py`,
+  Korrelation via session_id+tool, `pair_events()` in `_load.py`).
+- ✅ **Interaktives Server-Dashboard** (`analysis/server.py`, Stdlib `http.server`,
+  Analytics- + Timeline-Tab). Statt Streamlit/Dash bewusst Stdlib-only gehalten.
+- Codex- & andere-Agent-Adapter (schreiben ins selbe JSONL, anderer `agent`-Wert) —
+  noch offen.
+
+## Follow-up nächste Frontend-Iteration (P1)
+
+### Inline-HTML/JS-Template aus server.py auslagern
+`analysis/server.py` ist ~440 Zeilen, davon der Großteil das `_PAGE_TEMPLATE`-Stringliteral
+(HTML+CSS+JS). **Vor dem nächsten Frontend-Feature** das Template in ein separates Asset
+auslagern (z.B. `analysis/dashboard_template.html`, zur Laufzeit eingelesen analog zu
+Chart.js aus `vendor/`). Gründe: Server-Logik wird wieder reviewbar, das eingebettete JS
+lässt sich isoliert `node --check`-/lint-/Playwright-prüfen (siehe Lehre oben), und der
+HTTP-Code bleibt klein. Solange das Template inline bleibt, wächst die Datei mit jedem
+UI-Feature und der Hot-Path verschwindet im Markup.

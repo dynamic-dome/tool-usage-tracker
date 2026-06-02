@@ -22,6 +22,53 @@ einhängen. **Achtung:** Hooks laden erst bei Claude-Code-Neustart.
 
 Danach Claude neu starten. Geladene Hooks prüfen mit `/hooks`.
 
+## PostToolUse-Hook (Iteration 2 — Erfolg/Fehler/Dauer)
+
+Den Post-Hook bei **beiden** Events registrieren — `PostToolUse` (Erfolg) **und**
+`PostToolUseFailure` (Fehler) — beide zeigen auf dasselbe Skript `hook/track_tool_post.py`,
+mit demselben Matcher `"*"` wie der Pre-Hook:
+
+```json
+{
+  "PostToolUse": [
+    {
+      "matcher": "*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "python \"C:\\Users\\domes\\AI\\Hooks-bau\\tool-usage-tracker\\hook\\track_tool_post.py\"",
+          "timeout": 10
+        }
+      ]
+    }
+  ],
+  "PostToolUseFailure": [
+    {
+      "matcher": "*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "python \"C:\\Users\\domes\\AI\\Hooks-bau\\tool-usage-tracker\\hook\\track_tool_post.py\"",
+          "timeout": 10
+        }
+      ]
+    }
+  ]
+}
+```
+
+Der Post-Hook liest JSON von stdin, **blockiert nie** und beendet immer mit exit 0. Er
+schreibt eine `phase:"post"`-Zeile mit `ok` + (bei Fehler) sanitisiertem `error`; über
+`session_id`+`tool_name` wird sie beim Auswerten an die `phase:"pre"`-Zeile gepaart.
+
+**Verifikation zur Install-Zeit (echter End-to-End-Check, P006):** Nach dem Neustart
+einen beliebigen Tool-Call auslösen (z.B. einmal `ls`), dann `data/events.jsonl` ansehen.
+Es müssen **zwei** Zeilen erscheinen — eine `phase:"pre"` und eine `phase:"post"` mit
+gleicher `session_id` — und die Post-Zeile muss `ok` enthalten. Erscheint keine Post-Zeile,
+ist der Hook nicht geladen (Neustart/`/hooks` prüfen) oder die Plattform routet Fehler
+nicht über `PostToolUseFailure`. Dieser Live-Check ersetzt keine Unit-Tests; das
+tatsächliche Post-Payload-Schema ist undokumentiert und wird hier am echten Event geprüft.
+
 ## Auswertung
 
 ```bash
@@ -31,10 +78,16 @@ python analysis/report.py --agent claude-code --project Hooks-bau --since 2026-0
 
 # HTML-Dashboard (öffnet dashboard.html per Doppelklick, offline-fähig)
 python analysis/dashboard.py
+
+# Live-Server (interaktiv, zwei Tabs, manueller Refresh)
+python analysis/server.py            # dann http://127.0.0.1:8770 (nicht localhost!)
+python analysis/server.py --port 8888 --data data/events.jsonl
 ```
 
-Beide nehmen `--data <pfad>` (Default: `data/events.jsonl`) und die Filter
-`--agent`, `--project`, `--since YYYY-MM-DD`.
+`report.py` und `dashboard.py` nehmen `--data <pfad>` (Default: `data/events.jsonl`) und
+die Filter `--agent`, `--project`, `--since YYYY-MM-DD`, `--exclude-self`. `server.py`
+nimmt nur `--data` und `--port` (Default 8770); die Filter (inkl. `exclude_self`) werden
+im Dashboard live über die Header-Eingaben gesetzt.
 
 ## Daten-Ort & Override
 

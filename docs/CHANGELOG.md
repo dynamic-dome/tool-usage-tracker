@@ -11,3 +11,22 @@
 - Fix: fehlendes `}` in cHeat-Chart-Config (`_TEMPLATE`) brach das gesamte
   Dashboard-JS ab (leere KPIs/Charts trotz korrekter Daten). Dashboard jetzt
   browser-verifiziert (Playwright: 0 Console-Errors, alle 4 Charts + KPIs rendern).
+- Iteration-1-Backlog: breitere Secret-Formate (AWS `AKIA/ASIA`, JWT `eyJ…`, PEM,
+  Slack `xox[baprs]-`, GitHub `gho_/ghu_/ghs_/ghr_`+`github_pat_`), Sanitizer-Negativ-/
+  Komposition-Tests, `--exclude-self`-Filter (report+dashboard), `report.py`
+  cp1252-stdout-Fix.
+- Iteration 2 komplett:
+  - Schema auf `schema_v:2` + neues Feld `phase` (`"pre"`/`"post"`) — Pre- und
+    Post-Zeilen lassen sich eindeutig trennen.
+  - **PostToolUse/-Failure-Hook** (`hook/track_tool_post.py`): zeichnet `ok` +
+    sanitisierten `error` pro Tool-Abschluss auf. Erfolg primär aus `hook_event_name`,
+    Fallback `exit_code`. Wiederverwendet `redact`/`clip`/`_events_path` aus dem
+    Pre-Hook. Never-block, exit 0.
+  - **`pair_events()` + Aggregate** in `analysis/_load.py`: paart Pre+Post über
+    `session_id`+`tool_name` zu Spans (`duration_ms`, `ok`, `error`); plus
+    `success_rate_by`, `duration_stats_by`, `path_activity`.
+  - **Live-Server** (`analysis/server.py`, Stdlib `http.server`, an 127.0.0.1
+    gebunden, Default-Port 8770): zwei Tabs (Analytics-Grid + Timeline), manueller
+    Refresh, Filter agent/project/since/exclude_self. Chart.js inline aus `vendor/`.
+  - 59 Tests grün. Live-End-to-End des Post-Hooks ist an die Install-Zeit verlagert
+    (siehe install.md — echter Tool-Call → Pre+Post-Zeile in `events.jsonl` prüfen).
