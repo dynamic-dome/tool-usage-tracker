@@ -114,3 +114,40 @@ def pair_events(events):
                     "duration_ms": None, "ok": None, "error": "", "paired": False,
                 })
     return spans
+
+
+def _paired_with_ok(spans):
+    return [s for s in spans if s.get("paired") and s.get("ok") is not None]
+
+
+def success_rate_by(spans, key):
+    from collections import defaultdict
+    agg = defaultdict(lambda: [0, 0])  # [ok, total]
+    for s in _paired_with_ok(spans):
+        k = s.get(key)
+        agg[k][1] += 1
+        if s.get("ok"):
+            agg[k][0] += 1
+    return {k: (ok / total if total else 0.0) for k, (ok, total) in agg.items()}
+
+
+def duration_stats_by(spans, key):
+    from collections import defaultdict
+    buckets = defaultdict(list)
+    for s in spans:
+        if s.get("paired") and isinstance(s.get("duration_ms"), int):
+            buckets[s.get(key)].append(s["duration_ms"])
+    out = {}
+    for k, vals in buckets.items():
+        vals = sorted(vals)
+        n = len(vals)
+        avg = sum(vals) / n
+        median = vals[n // 2] if n % 2 else (vals[n // 2 - 1] + vals[n // 2]) / 2
+        p95 = vals[min(n - 1, int(round(0.95 * (n - 1))))]
+        out[k] = {"avg": avg, "median": median, "p95": p95, "count": n}
+    return out
+
+
+def path_activity(spans):
+    from collections import Counter
+    return dict(Counter(s.get("cwd") for s in spans if s.get("cwd")))

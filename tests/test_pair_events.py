@@ -69,3 +69,40 @@ def test_post_only_session_does_not_cross_sessions():
     spans = load.pair_events(evs)
     # Pre s1 ungepaart, Post s2 verwaist -> beide da, beide unpaired
     assert all(s["paired"] is False for s in spans)
+
+
+def _span(tool, ok, dur, project="P", agent="claude-code", cwd="c"):
+    return {"tool_name": tool, "ok": ok, "duration_ms": dur, "project": project,
+            "agent": agent, "cwd": cwd, "paired": dur is not None}
+
+
+def test_success_rate_by_tool():
+    spans = [_span("Bash", True, 100), _span("Bash", False, 200),
+             _span("Read", True, 50)]
+    rates = load.success_rate_by(spans, "tool_name")
+    assert rates["Bash"] == 0.5
+    assert rates["Read"] == 1.0
+
+
+def test_success_rate_ignores_unpaired():
+    spans = [_span("Bash", True, 100), {"tool_name": "Bash", "ok": None,
+             "duration_ms": None, "paired": False}]
+    rates = load.success_rate_by(spans, "tool_name")
+    assert rates["Bash"] == 1.0  # das ungepaarte zählt nicht
+
+
+def test_duration_stats_by_tool():
+    spans = [_span("Bash", True, 100), _span("Bash", True, 300)]
+    stats = load.duration_stats_by(spans, "tool_name")
+    assert stats["Bash"]["avg"] == 200
+    assert stats["Bash"]["median"] == 200
+    assert stats["Bash"]["p95"] >= 300 - 1  # p95 nahe Max bei 2 Werten
+
+
+def test_path_activity_counts_by_cwd():
+    spans = [_span("Bash", True, 100, cwd="C:/a/dual-bridge"),
+             _span("Read", True, 50, cwd="C:/a/dual-bridge"),
+             _span("Edit", True, 70, cwd="C:/a/Hooks-bau")]
+    act = load.path_activity(spans)
+    assert act["C:/a/dual-bridge"] == 2
+    assert act["C:/a/Hooks-bau"] == 1
