@@ -142,7 +142,7 @@ def duration_stats_by(spans, key):
         vals = sorted(vals)
         n = len(vals)
         avg = sum(vals) / n
-        median = vals[n // 2] if n % 2 else (vals[n // 2 - 1] + vals[n // 2]) / 2
+        median = float(vals[n // 2]) if n % 2 else (vals[n // 2 - 1] + vals[n // 2]) / 2
         p95 = vals[min(n - 1, int(round(0.95 * (n - 1))))]
         out[k] = {"avg": avg, "median": median, "p95": p95, "count": n}
     return out
