@@ -1,5 +1,8 @@
 import importlib.util
+import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 HOOK = Path(__file__).resolve().parents[1] / "hook" / "track_tool_use.py"
@@ -87,3 +90,59 @@ def test_events_path_is_lazy(tmp_path, monkeypatch):
     monkeypatch.setenv("TOOL_TRACKER_DATA", str(tmp_path / "b.jsonl"))
     second = track._events_path()
     assert first != second  # frisch gelesen, nicht eingefroren
+
+
+def test_build_event_has_all_required_fields():
+    raw = {"session_id": "s1", "cwd": r"C:\proj\Demo",
+           "tool_name": "Bash", "tool_input": {"command": "ls"},
+           "hook_event_name": "PreToolUse"}
+    ev = track.build_event(raw)
+    for k in ("ts_utc", "ts_local", "agent", "tool_name", "session_id",
+              "cwd", "project", "is_git_repo", "hook_event", "summary", "schema_v"):
+        assert k in ev
+    assert ev["agent"] == "claude-code"
+    assert ev["tool_name"] == "Bash"
+    assert ev["project"] == "Demo"
+    assert ev["summary"] == "ls"
+    assert ev["schema_v"] == 1
+
+
+def test_build_event_missing_fields_no_crash():
+    ev = track.build_event({})
+    assert ev["tool_name"] == "unknown"
+    assert ev["project"] == "unknown"
+    assert ev["summary"] == ""
+
+
+def _run_hook(stdin_text, env_extra):
+    env = dict(os.environ, **env_extra)
+    return subprocess.run([sys.executable, str(HOOK)], input=stdin_text,
+                          capture_output=True, text=True, env=env)
+
+
+def test_main_appends_valid_jsonl(tmp_path):
+    target = tmp_path / "ev.jsonl"
+    raw = json.dumps({"session_id": "s", "cwd": r"C:\x\Proj",
+                      "tool_name": "Read", "tool_input": {"file_path": r"C:\x\Proj\a.py"},
+                      "hook_event_name": "PreToolUse"})
+    r = _run_hook(raw, {"TOOL_TRACKER_DATA": str(target)})
+    assert r.returncode == 0
+    line = target.read_text(encoding="utf-8").strip()
+    ev = json.loads(line)
+    assert ev["tool_name"] == "Read"
+    assert ev["project"] == "Proj"
+
+
+def test_main_broken_stdin_exits_zero(tmp_path):
+    target = tmp_path / "ev.jsonl"
+    r = _run_hook("this is not json {{{", {"TOOL_TRACKER_DATA": str(target)})
+    assert r.returncode == 0  # nie blockieren
+
+
+def test_main_appends_not_overwrites(tmp_path):
+    target = tmp_path / "ev.jsonl"
+    raw = json.dumps({"session_id": "s", "cwd": "x", "tool_name": "Glob",
+                      "tool_input": {"pattern": "*.py"}, "hook_event_name": "PreToolUse"})
+    _run_hook(raw, {"TOOL_TRACKER_DATA": str(target)})
+    _run_hook(raw, {"TOOL_TRACKER_DATA": str(target)})
+    assert len(target.read_text(encoding="utf-8").strip().splitlines()) == 2

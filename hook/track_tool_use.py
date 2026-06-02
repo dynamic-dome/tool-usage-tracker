@@ -1,7 +1,10 @@
 """PreToolUse-Hook: zeichnet jede Tool-Anwendung als JSONL-Zeile auf.
 Darf NIE blockieren — alles in try/except, immer exit 0."""
+import json
 import os
 import re
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 MAX_LEN = 120
@@ -66,3 +69,52 @@ def _events_path() -> Path:
     if override:
         return Path(override)
     return Path(__file__).resolve().parents[1] / "data" / "events.jsonl"
+
+
+AGENT = "claude-code"
+SCHEMA_V = 1
+
+
+def build_event(raw: dict) -> dict:
+    if not isinstance(raw, dict):
+        raw = {}
+    cwd = raw.get("cwd", "")
+    tool_name = raw.get("tool_name") or "unknown"
+    tool_input = raw.get("tool_input") or {}
+    now = datetime.now(timezone.utc)
+    is_git = False
+    try:
+        is_git = bool(cwd) and (Path(str(cwd)) / ".git").exists()
+    except Exception:
+        is_git = False
+    return {
+        "ts_utc": now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z",
+        "ts_local": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "agent": AGENT,
+        "tool_name": tool_name,
+        "session_id": raw.get("session_id", ""),
+        "cwd": cwd,
+        "project": derive_project(cwd),
+        "is_git_repo": is_git,
+        "hook_event": raw.get("hook_event_name", "PreToolUse"),
+        "summary": build_summary(tool_name, tool_input),
+        "schema_v": SCHEMA_V,
+    }
+
+
+def main() -> int:
+    try:
+        data = sys.stdin.read()
+        raw = json.loads(data) if data.strip() else {}
+        ev = build_event(raw)
+        path = _events_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+    except Exception:
+        pass  # Tracking darf NIE die Arbeit stören
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
