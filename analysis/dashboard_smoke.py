@@ -85,7 +85,7 @@ const { chromium } = require('playwright');
     if (msg.type() === 'error') errors.push(msg.text());
   });
   page.on('pageerror', err => errors.push(String(err && err.message ? err.message : err)));
-  await page.goto(process.argv[2], { waitUntil: 'networkidle' });
+  await page.goto(process.argv[1], { waitUntil: 'networkidle' });
   const labels = await page.locator('.kpi .l').evaluateAll(nodes => nodes.map(n => n.textContent));
   await browser.close();
   const required = ['Total Events', 'Spans', 'Paired', 'Unpaired', 'Pairing-Rate'];

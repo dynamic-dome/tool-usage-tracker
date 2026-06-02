@@ -71,3 +71,8 @@
     und ein konservativer `local-cli`-Fallback.
   - Tests sichern Claude-Code-/Codex-unabhaengige Event-Erweiterung und verhindern,
     dass Secret-Argumente in Klassifizierungsfelder geraten.
+- Node-Playwright fuer Browser-Smokes als Dev-Dependency ergaenzt:
+  - `package.json`/`package-lock.json` erfassen `playwright` fuer lokale Smoke-Tests.
+  - `node_modules/` ist gitignored; die Python-App und Hooks bleiben stdlib-only.
+  - `npm test` fuehrt die Python-Test-Suite aus; `npm run test:dashboard` prueft den
+    Dashboard-Smoke inklusive Browser-Load, wenn Playwright verfuegbar ist.
