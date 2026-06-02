@@ -9,9 +9,24 @@ from pathlib import Path
 
 MAX_LEN = 120
 
+# Reihenfolge ist bedeutsam: spezifische Token-Formate ZUERST, damit das
+# generische key=value-Pattern (weiter unten) ihnen nicht die rechte Seite
+# zerstückelt und sie ins Leere greifen lässt.
 _SECRET_PATTERNS = [
+    # PEM-Private-Key-Blockheader (der eigentliche Schlüssel folgt im Klartext)
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[^-]*(?:-----END [A-Z ]*PRIVATE KEY-----)?"),
+    # OpenAI (inkl. sk-proj-…)
     re.compile(r"sk-[A-Za-z0-9_-]{10,}"),
-    re.compile(r"ghp_[A-Za-z0-9]{20,}"),
+    # GitHub: ghp_/gho_/ghu_/ghs_/ghr_ Tokens + Fine-grained PATs
+    re.compile(r"gh[opusr]_[A-Za-z0-9]{20,}"),
+    re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
+    # AWS Access Key ID
+    re.compile(r"(?:AKIA|ASIA)[0-9A-Z]{16}"),
+    # Slack Tokens
+    re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"),
+    # JWT (drei base64url-Segmente, vom typischen eyJ-Header eingeleitet)
+    re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),
+    # Generische key=value-Zuweisungen (NACH den spezifischen Formaten)
     re.compile(r"(?i)(api[_-]?key|token|password|secret|auth)\s*[=:]\s*(\"[^\"]*\"|'[^']*'|\S+)"),
     re.compile(r"(?i)bearer\s+\S+"),
 ]

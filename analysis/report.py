@@ -20,15 +20,27 @@ def _section(title):
     print(f"\n\033[96m── {title} ─────────────────\033[0m")
 
 
+def _force_utf8_stdout():
+    # Windows-Konsole ist per Default cp1252 und crasht an →/█/… (Regel 10).
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass  # älteres Python / nicht-reconfigurierbarer Stream — best effort
+
+
 def main():
+    _force_utf8_stdout()
     ap = argparse.ArgumentParser()
     ap.add_argument("--agent")
     ap.add_argument("--project")
     ap.add_argument("--since")
     ap.add_argument("--data", default=str(DEFAULT))
+    ap.add_argument("--exclude-self", action="store_true",
+                    help="Events des Mess-Tools selbst (Projekt + report/dashboard-Aufrufe) ausblenden")
     a = ap.parse_args()
 
-    evs = load_events(a.data, agent=a.agent, project=a.project, since=a.since)
+    evs = load_events(a.data, agent=a.agent, project=a.project, since=a.since,
+                      exclude_self=a.exclude_self)
     if not evs:
         print("Keine Events gefunden.")
         return

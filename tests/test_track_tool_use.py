@@ -18,6 +18,36 @@ def test_sanitize_truncates_to_120_chars():
     assert out.endswith("…")
 
 
+def test_clip_noop_for_short_string():
+    # Unter dem Limit -> nur strip, kein Ellipsis, sonst unverändert
+    assert track.clip("kurz") == "kurz"
+    assert track.clip("  padded  ") == "padded"
+    assert not track.clip("kurz").endswith("…")
+
+
+def test_clip_exactly_at_limit_unchanged():
+    s = "x" * track.MAX_LEN
+    out = track.clip(s)
+    assert out == s
+    assert not out.endswith("…")
+
+
+def test_redact_then_clip_composition():
+    # Langer String mit Secret: Ergebnis bleibt ≤ MAX_LEN UND redacted
+    raw = "api_key=" + "a" * 300
+    out = track.clip(track.redact(raw))
+    assert len(out) <= track.MAX_LEN
+    assert "‹redacted›" in out
+    assert "aaaa" not in out  # die 300 a's sind weg (redacted, nicht nur geclippt)
+
+
+def test_clip_does_not_create_secret_leak_at_boundary():
+    # Ein Secret darf nicht durch Clipping mittendrin abgeschnitten "überleben"
+    raw = "x" * 110 + " sk-ABCDEF1234567890ghij"
+    out = track.clip(track.redact(raw))
+    assert "sk-ABCDEF" not in out
+
+
 def test_redact_openai_key():
     assert "‹redacted›" in track.redact("key sk-ABCD1234567890efgh")
     assert "sk-ABCD" not in track.redact("key sk-ABCD1234567890efgh")
@@ -43,6 +73,48 @@ def test_redact_quoted_secret_with_spaces():
     s = track.redact('password = "my secret pw value"')
     assert "‹redacted›" in s
     assert "secret pw value" not in s
+
+
+def test_redact_aws_access_key():
+    s = track.redact("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE rest")
+    assert "‹redacted›" in s
+    assert "AKIAIOSFODNN7EXAMPLE" not in s
+
+
+def test_redact_jwt():
+    jwt = ("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+           "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4ifQ."
+           "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c")
+    s = track.redact("token " + jwt)
+    assert "‹redacted›" in s
+    assert "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c" not in s
+
+
+def test_redact_pem_private_key_header():
+    s = track.redact("data -----BEGIN RSA PRIVATE KEY----- MIIxyz")
+    assert "‹redacted›" in s
+    assert "BEGIN RSA PRIVATE KEY" not in s
+
+
+def test_redact_slack_token():
+    s = track.redact("SLACK=xoxb-1234567890-ABCDEFghijkl")
+    assert "‹redacted›" in s
+    assert "xoxb-1234567890-ABCDEFghijkl" not in s
+
+
+def test_redact_github_gho_and_pat():
+    s1 = track.redact("gho_0123456789abcdefABCDEF0123456789abcd")
+    s2 = track.redact("github_pat_11ABCDE0123456789_abcdefGHIJKLmnopqrstuvwx")
+    assert "‹redacted›" in s1
+    assert "gho_0123456789" not in s1
+    assert "‹redacted›" in s2
+    assert "github_pat_11ABCDE" not in s2
+
+
+def test_redact_does_not_eat_benign_text():
+    # Kein Secret-Format -> bleibt unangetastet
+    benign = "git commit -m 'fix the parser bug in module x'"
+    assert track.redact(benign) == benign
 
 
 def test_summary_bash_redacts_and_clips():

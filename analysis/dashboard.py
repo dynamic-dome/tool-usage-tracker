@@ -104,8 +104,11 @@ def main():
     ap.add_argument("--agent")
     ap.add_argument("--project")
     ap.add_argument("--since")
+    ap.add_argument("--exclude-self", action="store_true",
+                    help="Events des Mess-Tools selbst (Projekt + report/dashboard-Aufrufe) ausblenden")
     a = ap.parse_args()
-    evs = load_events(a.data, agent=a.agent, project=a.project, since=a.since)
+    evs = load_events(a.data, agent=a.agent, project=a.project, since=a.since,
+                      exclude_self=a.exclude_self)
     Path(a.out).write_text(build_html(evs), encoding="utf-8")
     print(f"Dashboard geschrieben: {a.out}  ({len(evs)} Events)")
 

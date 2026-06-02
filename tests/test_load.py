@@ -43,3 +43,40 @@ def test_filter_since(tmp_path):
 
 def test_missing_file_returns_empty(tmp_path):
     assert load.load_events(tmp_path / "nope.jsonl") == []
+
+
+def test_exclude_self_drops_own_project(tmp_path):
+    p = _write(tmp_path, [
+        {"agent": "x", "project": "tool-usage-tracker", "summary": "edit hook",
+         "ts_utc": "2026-06-02T10:00:00.000Z"},
+        {"agent": "x", "project": "RealWork", "summary": "do stuff",
+         "ts_utc": "2026-06-02T10:00:00.000Z"},
+    ])
+    evs = load.load_events(p, exclude_self=True)
+    assert len(evs) == 1
+    assert evs[0]["project"] == "RealWork"
+
+
+def test_exclude_self_drops_analysis_invocations(tmp_path):
+    # Auswertungs-Aufrufe aus FREMDEM Projekt: per summary erkannt
+    p = _write(tmp_path, [
+        {"agent": "x", "project": "RealWork",
+         "summary": "python analysis/report.py --since 2026-06-01",
+         "ts_utc": "2026-06-02T10:00:00.000Z"},
+        {"agent": "x", "project": "RealWork",
+         "summary": "python analysis/dashboard.py",
+         "ts_utc": "2026-06-02T10:00:00.000Z"},
+        {"agent": "x", "project": "RealWork", "summary": "ls -la",
+         "ts_utc": "2026-06-02T10:00:00.000Z"},
+    ])
+    evs = load.load_events(p, exclude_self=True)
+    assert len(evs) == 1
+    assert evs[0]["summary"] == "ls -la"
+
+
+def test_exclude_self_off_by_default(tmp_path):
+    p = _write(tmp_path, [
+        {"agent": "x", "project": "tool-usage-tracker", "summary": "x",
+         "ts_utc": "2026-06-02T10:00:00.000Z"},
+    ])
+    assert len(load.load_events(p)) == 1  # Rohdaten unangetastet ohne Flag
