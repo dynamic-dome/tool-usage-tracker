@@ -48,3 +48,9 @@
     Spans, Paired, Unpaired und Pairing-Rate.
   - `analysis/report.py` nutzt standardmäßig Spans mit Pairing-/Dauer-/Erfolg-/
     Failure-Sektionen; `--raw-events` behält die alte Roh-Event-Sicht.
+- Codex-Hook-Discovery-Smoke dokumentiert:
+  - `docs/reports/2026-06-02-codex-hook-discovery-smoke.md` haelt fest, dass
+    `codex exec --dangerously-bypass-hook-trust` den Shell-Toolcall ausfuehrt,
+    aber in diesem Modus keine projektlokale Hook-Eventdatei erzeugt.
+  - Simulierte Codex-Payloads bleiben funktionsfaehig; der interaktive `/hooks`-
+    Trust-Smoke bleibt als separater manueller Check offen.
