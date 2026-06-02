@@ -39,3 +39,27 @@ def test_redact_quoted_secret_with_spaces():
     s = track.redact('password = "my secret pw value"')
     assert "‹redacted›" in s
     assert "secret pw value" not in s
+
+
+def test_summary_bash_redacts_and_clips():
+    s = track.build_summary("Bash", {"command": "curl -H 'api_key=secret123abc' x"})
+    assert "‹redacted›" in s
+    assert len(s) <= 120
+
+
+def test_summary_edit_shortens_path():
+    s = track.build_summary("Edit", {"file_path": r"C:\a\b\c\d\e\file.py"})
+    assert s == r"c\d\e\file.py" or s.endswith("file.py")
+    assert "C:\\a\\b" not in s
+
+
+def test_summary_grep_uses_pattern():
+    assert track.build_summary("Grep", {"pattern": "TODO"}) == "TODO"
+
+
+def test_summary_mcp_tool_has_no_input():
+    assert track.build_summary("mcp__wiki__wiki_read", {"path": "secret/x.md"}) == ""
+
+
+def test_summary_unknown_tool_empty():
+    assert track.build_summary("SomethingNew", {"weird": "data"}) == ""
