@@ -40,3 +40,77 @@ def load_events(path, agent=None, project=None, since=None, exclude_self=False):
                 continue
             out.append(ev)
     return out
+
+
+def _phase(ev):
+    # Schema-v1-Events haben kein phase-Feld -> als "pre" behandeln
+    return ev.get("phase", "pre")
+
+
+def _duration_ms(start_ts, end_ts):
+    from datetime import datetime
+    fmt = "%Y-%m-%dT%H:%M:%S.%fZ"
+    try:
+        a = datetime.strptime(start_ts, fmt)
+        b = datetime.strptime(end_ts, fmt)
+        return int((b - a).total_seconds() * 1000)
+    except Exception:
+        return None
+
+
+def pair_events(events):
+    """Verschmilzt pre+post zu Spans (session_id + tool_name + FIFO).
+    Ungepaarte Events bleiben erhalten (paired=False), zählen nicht in Aggregate."""
+    spans = []
+    # offene Pres je (session_id, tool_name) als FIFO-Queue
+    open_pre = {}
+    used_pre = set()
+    # erst alle Events in Reihenfolge; Post paart mit ältestem offenen Pre
+    ordered = sorted(events, key=lambda e: str(e.get("ts_utc", "")))
+    # Index der Pres pro Key
+    for ev in ordered:
+        if _phase(ev) == "pre":
+            key = (ev.get("session_id"), ev.get("tool_name"))
+            open_pre.setdefault(key, []).append(ev)
+    for ev in ordered:
+        if _phase(ev) != "post":
+            continue
+        key = (ev.get("session_id"), ev.get("tool_name"))
+        queue = open_pre.get(key, [])
+        match = None
+        for pre in queue:
+            if id(pre) not in used_pre:
+                match = pre
+                used_pre.add(id(pre))
+                break
+        if match is not None:
+            spans.append({
+                "tool_name": match.get("tool_name"), "agent": match.get("agent"),
+                "session_id": match.get("session_id"), "project": match.get("project"),
+                "summary": match.get("summary"), "cwd": match.get("cwd"),
+                "ts_start": match.get("ts_utc"), "ts_end": ev.get("ts_utc"),
+                "duration_ms": _duration_ms(match.get("ts_utc", ""), ev.get("ts_utc", "")),
+                "ok": ev.get("ok"), "error": ev.get("error", ""), "paired": True,
+            })
+        else:
+            # verwaistes Post
+            spans.append({
+                "tool_name": ev.get("tool_name"), "agent": ev.get("agent"),
+                "session_id": ev.get("session_id"), "project": None,
+                "summary": None, "cwd": None,
+                "ts_start": None, "ts_end": ev.get("ts_utc"),
+                "duration_ms": None, "ok": None, "error": ev.get("error", ""),
+                "paired": False,
+            })
+    # ungepaarte Pres
+    for queue in open_pre.values():
+        for pre in queue:
+            if id(pre) not in used_pre:
+                spans.append({
+                    "tool_name": pre.get("tool_name"), "agent": pre.get("agent"),
+                    "session_id": pre.get("session_id"), "project": pre.get("project"),
+                    "summary": pre.get("summary"), "cwd": pre.get("cwd"),
+                    "ts_start": pre.get("ts_utc"), "ts_end": None,
+                    "duration_ms": None, "ok": None, "error": "", "paired": False,
+                })
+    return spans
