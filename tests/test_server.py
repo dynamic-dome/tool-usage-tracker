@@ -44,6 +44,54 @@ def test_spans_json_respects_exclude_self(tmp_path):
     assert payload["count"] == 0  # self-Projekt rausgefiltert vor Paarung
 
 
+def test_spans_payload_lists_distinct_agents_and_projects(tmp_path):
+    # Für die Filter-Dropdowns: sortierte, eindeutige Werte aller Events.
+    p = _write(tmp_path, [
+        {"phase": "pre", "session_id": "s1", "tool_name": "Bash",
+         "ts_utc": "2026-06-02T10:00:00.000Z", "project": "zeta", "cwd": "c",
+         "summary": "x", "agent": "codex"},
+        {"phase": "post", "session_id": "s1", "tool_name": "Bash",
+         "ts_utc": "2026-06-02T10:00:00.200Z", "ok": True, "agent": "codex"},
+        {"phase": "pre", "session_id": "s2", "tool_name": "Read",
+         "ts_utc": "2026-06-02T10:01:00.000Z", "project": "alpha", "cwd": "c",
+         "summary": "y", "agent": "claude-code"},
+    ])
+    payload = srv.spans_payload(str(p), {})
+    assert payload["agents"] == ["claude-code", "codex"]   # sortiert, unique
+    assert payload["projects"] == ["alpha", "zeta"]        # sortiert, unique
+
+
+def test_spans_payload_filter_options_ignore_active_filter(tmp_path):
+    # Die Auswahl-Listen müssen ALLE Werte zeigen, auch wenn gerade gefiltert
+    # wird — sonst könnte man nie auf einen anderen Wert umschalten.
+    p = _write(tmp_path, [
+        {"phase": "pre", "session_id": "s1", "tool_name": "Bash",
+         "ts_utc": "2026-06-02T10:00:00.000Z", "project": "zeta", "cwd": "c",
+         "summary": "x", "agent": "codex"},
+        {"phase": "pre", "session_id": "s2", "tool_name": "Read",
+         "ts_utc": "2026-06-02T10:01:00.000Z", "project": "alpha", "cwd": "c",
+         "summary": "y", "agent": "claude-code"},
+    ])
+    payload = srv.spans_payload(str(p), {"agent": "codex"})
+    # gefilterte spans betreffen nur codex/zeta, aber die Optionen bleiben voll
+    assert payload["agents"] == ["claude-code", "codex"]
+    assert payload["projects"] == ["alpha", "zeta"]
+
+
+def test_spans_payload_filter_options_skip_empty_values(tmp_path):
+    # Events ohne agent/project dürfen keine leeren Optionen erzeugen.
+    p = _write(tmp_path, [
+        {"phase": "pre", "session_id": "s1", "tool_name": "Bash",
+         "ts_utc": "2026-06-02T10:00:00.000Z", "cwd": "c", "summary": "x"},
+        {"phase": "pre", "session_id": "s2", "tool_name": "Read",
+         "ts_utc": "2026-06-02T10:01:00.000Z", "project": "alpha", "cwd": "c",
+         "summary": "y", "agent": "claude-code"},
+    ])
+    payload = srv.spans_payload(str(p), {})
+    assert payload["agents"] == ["claude-code"]
+    assert payload["projects"] == ["alpha"]
+
+
 def test_parse_query_flags():
     params = srv.parse_query("agent=codex&exclude_self=1&since=2026-06-01")
     assert params["agent"] == "codex"

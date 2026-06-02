@@ -23,6 +23,12 @@ def parse_query(query_string):
     return {k: v[0] for k, v in raw.items()}
 
 
+def _distinct_sorted(events, key):
+    """Sortierte, eindeutige nicht-leere Werte eines Feldes — speist die
+    Filter-Dropdowns im Dashboard."""
+    return sorted({v for ev in events if (v := ev.get(key))})
+
+
 def spans_payload(data_path, params):
     evs = load_events(data_path,
                       agent=params.get("agent"),
@@ -30,10 +36,15 @@ def spans_payload(data_path, params):
                       since=params.get("since"),
                       exclude_self=params.get("exclude_self") in ("1", "true", "True"))
     spans = pair_events(evs)
+    # Auswahl-Optionen aus ALLEN Events (ungefiltert) — sonst könnte man von
+    # einem aktiven Filter nie auf einen anderen Wert umschalten.
+    all_evs = load_events(data_path)
     return {
         "count": len([s for s in spans if s.get("paired")]),
         "total_events": len(evs),
         "spans": spans,
+        "agents": _distinct_sorted(all_evs, "agent"),
+        "projects": _distinct_sorted(all_evs, "project"),
         "success_by_tool": success_rate_by(spans, "tool_name"),
         "success_by_project": success_rate_by(spans, "project"),
         "duration_by_tool": duration_stats_by(spans, "tool_name"),
@@ -90,7 +101,8 @@ header{display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin-bottom:20p
 .tab.active{color:var(--bg);background:var(--accent);border-color:var(--accent)}
 .filters{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-left:auto}
 .filters label{font-size:12px;opacity:.75;display:flex;flex-direction:column;gap:3px}
-.filters input[type=text]{background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:'JetBrains Mono',monospace;font-size:12px;width:140px}
+.filters input[type=text],.filters input[type=date]{background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:'JetBrains Mono',monospace;font-size:12px;width:140px}
+.filters input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.8)}
 .filters .chk{flex-direction:row;align-items:center;gap:6px}
 button.refresh{font-family:'JetBrains Mono',monospace;font-size:13px;background:var(--accent2);color:var(--bg);border:none;border-radius:8px;padding:9px 18px;cursor:pointer;font-weight:600}
 .kpis{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px}
@@ -126,9 +138,11 @@ canvas{max-height:300px}
     <button class="tab" id="btnTimeline">Timeline</button>
   </div>
   <div class="filters">
-    <label>agent<input type="text" id="fAgent" placeholder="z.B. claude-code"></label>
-    <label>project<input type="text" id="fProject" placeholder="z.B. dual-bridge"></label>
-    <label>since<input type="text" id="fSince" placeholder="YYYY-MM-DD"></label>
+    <label>agent<input type="text" id="fAgent" list="dlAgents" placeholder="alle"></label>
+    <datalist id="dlAgents"></datalist>
+    <label>project<input type="text" id="fProject" list="dlProjects" placeholder="alle"></label>
+    <datalist id="dlProjects"></datalist>
+    <label>since<input type="date" id="fSince"></label>
     <label class="chk"><input type="checkbox" id="fExcludeSelf">exclude_self</label>
     <button class="refresh" id="btnRefresh">&#8635; Refresh</button>
   </div>
@@ -396,7 +410,22 @@ function renderTimeline(data){
   });
 }
 
+function fillOptions(listId, values){
+  var dl = $(listId);
+  if (!dl) return;
+  dl.innerHTML = (values || []).map(function(v){
+    return '<option value="' + esc(v) + '">';
+  }).join('');
+}
+
+function renderFilters(data){
+  // Dropdown-Auswahl (datalist) aus den existierenden Werten befüllen.
+  fillOptions('dlAgents', data.agents);
+  fillOptions('dlProjects', data.projects);
+}
+
 function renderAll(data){
+  renderFilters(data);
   renderKPIs(data);
   renderTools(data);
   renderDays(data);
