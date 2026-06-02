@@ -9,9 +9,19 @@
 **Tech Stack:** Python-Stdlib only (re, json, http.server, datetime, pathlib). Inline-Chart.js (bereits vendored). Kein Flask/pandas/Selenium.
 
 **Ground-Truth-Korrektur ggü. Spec (P006-Recherche 2026-06-02):**
-- Das PostToolUse-Payload-Feld heißt `tool_output` (nicht `tool_response`).
-- Claude Code routet Erfolg/Fehler in ZWEI Events: `PostToolUse` (Erfolg) vs. `PostToolUseFailure` (Fehler, mit `tool_error`-Objekt). `ok` ergibt sich also aus `hook_event_name` — keine Per-Tool-Heuristik nötig. Fallback: `tool_output.exit_code` falls vorhanden.
+- ~~Das PostToolUse-Payload-Feld heißt `tool_output` (nicht `tool_response`).~~
+- ~~Claude Code routet Erfolg/Fehler in ZWEI Events: `PostToolUse` (Erfolg) vs. `PostToolUseFailure` (Fehler, mit `tool_error`-Objekt). `ok` ergibt sich also aus `hook_event_name`. Fallback: `tool_output.exit_code` falls vorhanden.~~
 - Keine Tool-Call-ID im Payload → FIFO-Paarung (wie Spec) ist korrekt.
+
+> **ERRATA (nach Final-Review, gegen ECHTE installierte Hooks + Transcripts verifiziert, Commit `b6ac05c`):**
+> Die ersten beiden Punkte oben waren FALSCH (erste Guide-Recherche irrte — klassische P006-Falle).
+> Korrekt: Das Result-Feld heißt **`tool_response`** (echte Plugin-Hooks nutzen es, `tool_output` kommt
+> in Plugin-Code 0× vor). Erfolg/Fehler wird NICHT allein über den Event-Namen entschieden — `tool_response`
+> kann `is_error` / `exit_code` / `interrupted` tragen. Die finale Implementierung liest daher `tool_response`
+> primär und prüft mehrere Fehlersignale defensiv (`tool_output`/`tool_error` nur als Fallback fürs evtl.
+> separate `PostToolUseFailure`-Event). Zudem KANN ein `tool_use_id` im Payload liegen → für späteres exaktes
+> Pairing mitgeschnitten (FIFO bleibt vorerst der Paarungs-Mechanismus). Die Tasks 2 unten zeigen den
+> ursprünglichen (falschen) Code-Block; der reale Code in `hook/track_tool_post.py` weicht entsprechend ab.
 
 ---
 
