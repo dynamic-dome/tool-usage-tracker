@@ -64,3 +64,10 @@
     Browser-Smoke gegen das Live-Dashboard ausfuehren.
   - `tests/test_dashboard_smoke.py` prueft Template-Scripts und skippt Browser-
     Checks sauber, wenn Playwright lokal nicht verfuegbar ist.
+- Bash/CLI-App-Klassifizierung ergänzt:
+  - `hook/track_tool_use.py` leitet fuer Bash-Kommandos optionale Felder
+    `app`, `operation`, `intent`, `risk`, `mutating` ab.
+  - Abgedeckt sind u.a. `git`, `gh`, `wrangler`, `notebooklm`, Python-/Node-Tools
+    und ein konservativer `local-cli`-Fallback.
+  - Tests sichern Claude-Code-/Codex-unabhaengige Event-Erweiterung und verhindern,
+    dass Secret-Argumente in Klassifizierungsfelder geraten.

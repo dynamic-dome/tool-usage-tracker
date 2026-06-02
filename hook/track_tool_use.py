@@ -73,6 +73,98 @@ def build_summary(tool_name: str, tool_input: dict) -> str:
     return ""
 
 
+def _command_words(command: str):
+    return re.findall(r"[A-Za-z0-9_.-]+", command.lower())
+
+
+def classify_bash_command(command: str) -> dict:
+    words = _command_words(command)
+    if not words:
+        return {"app": "local-cli", "operation": "", "intent": "unknown",
+                "risk": "low", "mutating": False}
+
+    # Wrapper wie `npx wrangler ...` auf das eigentliche Tool normalisieren.
+    if words[:2] in (["npx", "wrangler"], ["pnpm", "wrangler"]):
+        words = words[1:]
+
+    first = words[0]
+    second = words[1] if len(words) > 1 else ""
+    third = words[2] if len(words) > 2 else ""
+
+    if first == "git":
+        read_ops = {"status", "diff", "show", "log", "fetch"}
+        high_ops = {"push", "merge", "rebase"}
+        write_ops = {"add", "commit", "pull", "checkout", "switch", "restore"}
+        op = f"git {second}".strip()
+        if second in read_ops:
+            return {"app": "git", "operation": op, "intent": "read",
+                    "risk": "low", "mutating": False}
+        if second in high_ops:
+            return {"app": "git", "operation": op, "intent": "write",
+                    "risk": "high", "mutating": True}
+        if second in write_ops:
+            return {"app": "git", "operation": op, "intent": "write",
+                    "risk": "medium", "mutating": True}
+        return {"app": "git", "operation": op, "intent": "unknown",
+                "risk": "medium", "mutating": False}
+
+    if first == "gh":
+        op = " ".join(w for w in ("gh", second, third) if w)
+        mutating_ops = {"create", "comment", "review", "merge", "delete", "close", "reopen"}
+        read_ops = {"view", "list", "status", "checks", "diff"}
+        if second == "api" and any(w in {"post", "patch", "delete"} for w in words):
+            return {"app": "github", "operation": "gh api", "intent": "write",
+                    "risk": "high", "mutating": True}
+        if third in mutating_ops:
+            return {"app": "github", "operation": op, "intent": "write",
+                    "risk": "high" if third == "merge" else "medium",
+                    "mutating": True}
+        if third in read_ops or second in {"pr", "issue", "run", "workflow", "repo"}:
+            return {"app": "github", "operation": op, "intent": "read",
+                    "risk": "low", "mutating": False}
+        return {"app": "github", "operation": op, "intent": "unknown",
+                "risk": "medium", "mutating": False}
+
+    if first in {"wrangler", "wrangler.cmd"}:
+        product = "pages" if second == "pages" else ""
+        action = third if product else second
+        op = " ".join(w for w in ("wrangler", product, action) if w)
+        if action == "deploy":
+            return {"app": "cloudflare", "operation": op, "intent": "deploy",
+                    "risk": "high", "mutating": True}
+        if action in {"secret", "d1", "kv", "r2"}:
+            return {"app": "cloudflare", "operation": op, "intent": "write",
+                    "risk": "high", "mutating": True}
+        return {"app": "cloudflare", "operation": op, "intent": "read",
+                "risk": "low", "mutating": False}
+
+    if first == "notebooklm":
+        op = f"notebooklm {second}".strip()
+        mutating = second in {"create", "add", "delete", "use"}
+        return {"app": "notebooklm", "operation": op,
+                "intent": "write" if mutating else "read",
+                "risk": "medium" if mutating else "low", "mutating": mutating}
+
+    if first in {"pytest", "ruff", "mypy"} or (first in {"python", "py"} and "pytest" in words):
+        return {"app": "python", "operation": "pytest" if "pytest" in words else first,
+                "intent": "test", "risk": "low", "mutating": False}
+    if first in {"python", "py", "uv", "pip"}:
+        mutating = first in {"uv", "pip"} and second in {"add", "install", "sync"}
+        return {"app": "python", "operation": f"{first} {second}".strip(),
+                "intent": "write" if mutating else "unknown",
+                "risk": "medium" if mutating else "low", "mutating": mutating}
+
+    if first in {"node", "npm", "pnpm"}:
+        test_cmd = second in {"test", "vitest"} or "test" in words
+        mutating = second in {"install", "add", "remove", "update"}
+        return {"app": "node", "operation": f"{first} {second}".strip(),
+                "intent": "test" if test_cmd else ("write" if mutating else "unknown"),
+                "risk": "medium" if mutating else "low", "mutating": mutating}
+
+    return {"app": "local-cli", "operation": first, "intent": "unknown",
+            "risk": "low", "mutating": False}
+
+
 def derive_project(cwd) -> str:
     if not cwd:
         return "unknown"
@@ -114,7 +206,7 @@ def build_event(raw: dict) -> dict:
         is_git = bool(cwd) and (Path(str(cwd)) / ".git").exists()
     except Exception:
         is_git = False
-    return {
+    ev = {
         "ts_utc": now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z",
         "ts_local": now_local.strftime("%Y-%m-%d %H:%M:%S"),
         "agent": derive_agent(raw),
@@ -129,6 +221,9 @@ def build_event(raw: dict) -> dict:
         "phase": "pre",
         "schema_v": SCHEMA_V,
     }
+    if tool_name == "Bash":
+        ev.update(classify_bash_command(str(tool_input.get("command", ""))))
+    return ev
 
 
 def main() -> int:

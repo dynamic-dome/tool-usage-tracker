@@ -3,4 +3,5 @@
 - Sanitisierung: 120-Zeichen-Limit, Secret-Redaction, Pfad-Kürzung, kein Datei-Inhalt.
 - Pairing: `analysis/_load.py` verschmilzt Pre/Post zu Spans mit `duration_ms`, Erfolg und Fehlertext; exakter Match per `tool_use_id`, FIFO-Fallback fuer Altdaten.
 - Auswertung: CLI-Report, statisches HTML-Dashboard und Live-Dashboard (`analysis/server.py`) mit Analytics-/Timeline-Ansicht, Filtern und manueller Refresh-Steuerung.
+- Bash-Klassifizierung: `PreToolUse`-Events fuer `Bash` bekommen optionale Felder `app`, `operation`, `intent`, `risk`, `mutating` fuer bekannte CLI-Familien (`git`, `gh`, `wrangler`, `notebooklm`, Python-/Node-Tools).
 - Codex: projektlokale `.codex/hooks.json` vorhanden; Payload-Erkennung ueber `model` schreibt `agent:"codex"`. Live-Discovery in `codex exec` ist noch nicht voll bestaetigt.

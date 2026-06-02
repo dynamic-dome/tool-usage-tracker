@@ -222,6 +222,73 @@ def test_build_event_marks_codex_agent_from_model_field():
     assert ev["agent"] == "codex"
 
 
+def test_build_event_classifies_git_read_command():
+    ev = track.build_event({"session_id": "s", "cwd": r"C:\proj\Demo",
+                            "tool_name": "Bash",
+                            "tool_input": {"command": "git status --short"},
+                            "hook_event_name": "PreToolUse"})
+    assert ev["app"] == "git"
+    assert ev["operation"] == "git status"
+    assert ev["intent"] == "read"
+    assert ev["risk"] == "low"
+    assert ev["mutating"] is False
+
+
+def test_build_event_classifies_github_mutating_command():
+    ev = track.build_event({"session_id": "s", "cwd": r"C:\proj\Demo",
+                            "tool_name": "Bash",
+                            "tool_input": {"command": "gh pr merge 42 --squash"},
+                            "hook_event_name": "PreToolUse"})
+    assert ev["app"] == "github"
+    assert ev["operation"] == "gh pr merge"
+    assert ev["intent"] == "write"
+    assert ev["risk"] == "high"
+    assert ev["mutating"] is True
+
+
+def test_build_event_classifies_wrangler_deploy():
+    ev = track.build_event({"session_id": "s", "cwd": r"C:\proj\Demo",
+                            "tool_name": "Bash",
+                            "tool_input": {"command": "npx wrangler deploy --env production"},
+                            "hook_event_name": "PreToolUse"})
+    assert ev["app"] == "cloudflare"
+    assert ev["operation"] == "wrangler deploy"
+    assert ev["intent"] == "deploy"
+    assert ev["risk"] == "high"
+    assert ev["mutating"] is True
+
+
+def test_build_event_classifies_python_test_command():
+    ev = track.build_event({"session_id": "s", "cwd": r"C:\proj\Demo",
+                            "tool_name": "Bash",
+                            "tool_input": {"command": "python -m pytest -q"},
+                            "hook_event_name": "PreToolUse"})
+    assert ev["app"] == "python"
+    assert ev["operation"] == "pytest"
+    assert ev["intent"] == "test"
+    assert ev["risk"] == "low"
+    assert ev["mutating"] is False
+
+
+def test_build_event_does_not_add_cli_classification_to_non_bash():
+    ev = track.build_event({"session_id": "s", "cwd": r"C:\proj\Demo",
+                            "tool_name": "Read",
+                            "tool_input": {"file_path": r"C:\proj\Demo\a.py"},
+                            "hook_event_name": "PreToolUse"})
+    assert "app" not in ev
+    assert "operation" not in ev
+
+
+def test_bash_classification_does_not_leak_secret_arguments():
+    ev = track.build_event({"session_id": "s", "cwd": r"C:\proj\Demo",
+                            "tool_name": "Bash",
+                            "tool_input": {"command": "curl -H api_key=supersecret123 https://example.com"},
+                            "hook_event_name": "PreToolUse"})
+    assert ev["app"] == "local-cli"
+    assert ev["operation"] == "curl"
+    assert "supersecret123" not in json.dumps(ev)
+
+
 def test_build_event_keeps_claude_agent_without_codex_markers():
     ev = track.build_event({"session_id": "s", "cwd": r"C:\proj\Demo",
                             "tool_name": "Bash", "tool_input": {"command": "ls"},
