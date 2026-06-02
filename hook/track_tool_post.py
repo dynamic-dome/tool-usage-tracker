@@ -71,7 +71,7 @@ def build_post_event(raw: dict) -> dict:
     return {
         "ts_utc": now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z",
         "ts_local": now_local.strftime("%Y-%m-%d %H:%M:%S"),
-        "agent": _pre.AGENT,
+        "agent": _pre.derive_agent(raw),
         "schema_v": _pre.SCHEMA_V,
         "phase": "post",
         "tool_name": raw.get("tool_name") or "unknown",

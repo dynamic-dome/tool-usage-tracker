@@ -1,5 +1,41 @@
 # Installation — tool-usage-tracker
 
+## Codex
+
+Codex-Hooks sind in `codex-cli 0.136.0` standardmäßig aktiv. Dieses Projekt
+liefert eine projektlokale Konfiguration in `.codex/hooks.json` mit:
+
+- `PreToolUse` → `hook/track_tool_use.py`
+- `PostToolUse` → `hook/track_tool_post.py`
+
+Codex lädt projektlokale Hooks nur aus vertrauenswürdigen Projekten. Nach dem
+Start im Projekt `tool-usage-tracker` mit `/hooks` prüfen, die beiden Command-
+Hooks reviewen und trusten. Alternativ für einen bereits extern geprüften
+Automationslauf: `codex --dangerously-bypass-hook-trust`.
+
+Wichtige Unterschiede zu Claude Code:
+
+- Codex nutzt **nur** `PostToolUse`; ein separates `PostToolUseFailure` gibt es
+  hier nicht. Fehlgeschlagene Bash-Kommandos kommen ebenfalls über
+  `PostToolUse` mit `tool_response`.
+- Codex führt derzeit nur `type:"command"`-Hooks aus. `prompt`/`agent`-Hooks
+  werden geparst, aber übersprungen.
+- Der Tracker erkennt Codex-Payloads über das Codex-spezifische `model`-Feld
+  und schreibt dann `agent:"codex"` in `events.jsonl`.
+
+Echter Smoke nach Trust/Neustart:
+
+```powershell
+cd C:\Users\domes\AI\Hooks-bau\tool-usage-tracker
+codex exec --dangerously-bypass-hook-trust "run a harmless pwd command"
+Get-Content .\data\events.jsonl -Tail 4
+```
+
+Erwartung: mindestens eine `phase:"pre"`- und eine `phase:"post"`-Zeile mit
+`agent:"codex"` und gleicher `tool_use_id`.
+
+## Claude Code
+
 Hook in `~/.claude/settings.json` (oder `settings.local.json`) unter `PreToolUse`
 einhängen. **Achtung:** Hooks laden erst bei Claude-Code-Neustart.
 

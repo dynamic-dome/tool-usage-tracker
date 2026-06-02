@@ -1,7 +1,8 @@
 # HOW-TO-USE — tool-usage-tracker
 
 ## Was ist das?
-Hooks, die bei jeder Claude-Tool-Anwendung Events nach `data/events.jsonl` schreiben:
+Hooks, die bei jeder Claude-Code- oder Codex-Tool-Anwendung Events nach
+`data/events.jsonl` schreiben:
 - **PreToolUse** (`hook/track_tool_use.py`) — eine `phase:"pre"`-Zeile pro Tool-Start
   (was, wo, sanitisiertes Summary).
 - **PostToolUse/-Failure** (`hook/track_tool_post.py`) — eine `phase:"post"`-Zeile pro
@@ -9,7 +10,9 @@ Hooks, die bei jeder Claude-Tool-Anwendung Events nach `data/events.jsonl` schre
   `tool_name` werden Pre und Post zu Spans gepaart → Dauer (`duration_ms`) und Erfolg.
 
 ## Installation
-Siehe `install.md` — Snippet in `~/.claude/settings.json` einhängen, Claude neu starten.
+Siehe `install.md`.
+- Codex: projektlokale `.codex/hooks.json` reviewen/trusten (`/hooks`).
+- Claude Code: Snippet in `~/.claude/settings.json` einhängen, Claude neu starten.
 
 ## Auswertung
 - CLI: `python analysis/report.py` (Flags: --agent --project --since --exclude-self --data)

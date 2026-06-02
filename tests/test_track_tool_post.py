@@ -77,6 +77,13 @@ def test_build_post_event_captures_tool_use_id_if_present():
     assert ev.get("tool_use_id") == "toolu_abc"
 
 
+def test_build_post_event_marks_codex_agent_from_model_field():
+    raw = {"session_id": "s1", "tool_name": "Bash", "hook_event_name": "PostToolUse",
+           "model": "gpt-5.5", "tool_response": {"exit_code": 0}}
+    ev = post.build_post_event(raw)
+    assert ev["agent"] == "codex"
+
+
 def test_build_post_event_is_error_wins_over_exit_code_zero():
     raw = {"session_id": "s1", "tool_name": "Bash", "hook_event_name": "PostToolUse",
            "tool_response": {"is_error": True, "exit_code": 0, "stdout": "looks ok", "stderr": "but failed"}}

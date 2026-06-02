@@ -30,3 +30,8 @@
     Refresh, Filter agent/project/since/exclude_self. Chart.js inline aus `vendor/`.
   - 59 Tests grün. Live-End-to-End des Post-Hooks ist an die Install-Zeit verlagert
     (siehe install.md — echter Tool-Call → Pre+Post-Zeile in `events.jsonl` prüfen).
+- Codex-Portierung:
+  - Projektlokale `.codex/hooks.json` für Codex `PreToolUse`/`PostToolUse`.
+  - Hooks erkennen Codex-Payloads über `model` und schreiben `agent:"codex"`.
+  - `apply_patch` bekommt eine sanitisierte Summary; Claude-Code-Verhalten bleibt
+    unverändert. 78 Tests grün.

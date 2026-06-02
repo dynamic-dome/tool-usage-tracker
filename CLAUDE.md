@@ -1,8 +1,9 @@
 # CLAUDE.md — tool-usage-tracker
 
 ## Projekt
-PreToolUse-Hook für Claude Code: zeichnet jede Tool-Anwendung als sanitisierte
-JSONL-Zeile auf. Auswertung per CLI-Report + HTML-Dashboard. Privates Git-Repo.
+PreToolUse/PostToolUse-Hooks für Claude Code und Codex: zeichnet jede
+Tool-Anwendung als sanitisierte JSONL-Zeile auf. Auswertung per CLI-Report +
+HTML-Dashboard. Privates Git-Repo.
 Details: HOW-TO-USE.md + docs/.
 
 ## Kern-Regeln

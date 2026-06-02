@@ -64,6 +64,8 @@ def build_summary(tool_name: str, tool_input: dict) -> str:
         return clip(redact(str(tool_input.get("pattern", ""))))
     if tool_name in ("Task", "Agent"):
         return clip(redact(str(tool_input.get("description", ""))))
+    if tool_name == "apply_patch":
+        return clip(redact(str(tool_input.get("command", ""))))
     if tool_name == "WebFetch":
         return clip(str(tool_input.get("url", "")))
     if tool_name == "WebSearch":
@@ -90,6 +92,13 @@ AGENT = "claude-code"
 SCHEMA_V = 2
 
 
+def derive_agent(raw: dict) -> str:
+    # Codex hook payloads include a model field; Claude Code payloads currently do not.
+    if raw.get("model"):
+        return "codex"
+    return AGENT
+
+
 def build_event(raw: dict) -> dict:
     if not isinstance(raw, dict):
         raw = {}
@@ -108,7 +117,7 @@ def build_event(raw: dict) -> dict:
     return {
         "ts_utc": now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z",
         "ts_local": now_local.strftime("%Y-%m-%d %H:%M:%S"),
-        "agent": AGENT,
+        "agent": derive_agent(raw),
         "tool_name": tool_name,
         "session_id": raw.get("session_id", ""),
         "tool_use_id": raw.get("tool_use_id", ""),

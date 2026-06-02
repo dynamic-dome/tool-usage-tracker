@@ -164,6 +164,13 @@ def test_summary_mcp_tool_has_no_input():
     assert track.build_summary("mcp__wiki__wiki_read", {"path": "secret/x.md"}) == ""
 
 
+def test_summary_codex_apply_patch_uses_command_prefix():
+    patch = "*** Begin Patch\n*** Update File: app.py\n@@\n-print('old')\n+print('new')"
+    s = track.build_summary("apply_patch", {"command": patch})
+    assert s.startswith("*** Begin Patch")
+    assert len(s) <= track.MAX_LEN
+
+
 def test_summary_unknown_tool_empty():
     assert track.build_summary("SomethingNew", {"weird": "data"}) == ""
 
@@ -205,6 +212,21 @@ def test_build_event_has_all_required_fields():
     assert ev["project"] == "Demo"
     assert ev["summary"] == "ls"
     assert ev["schema_v"] == 2
+
+
+def test_build_event_marks_codex_agent_from_model_field():
+    ev = track.build_event({"session_id": "s", "cwd": r"C:\proj\Demo",
+                            "tool_name": "Bash", "tool_input": {"command": "ls"},
+                            "hook_event_name": "PreToolUse",
+                            "model": "gpt-5.5"})
+    assert ev["agent"] == "codex"
+
+
+def test_build_event_keeps_claude_agent_without_codex_markers():
+    ev = track.build_event({"session_id": "s", "cwd": r"C:\proj\Demo",
+                            "tool_name": "Bash", "tool_input": {"command": "ls"},
+                            "hook_event_name": "PreToolUse"})
+    assert ev["agent"] == "claude-code"
 
 
 def test_build_event_has_phase_pre_and_schema_2():
