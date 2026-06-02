@@ -1,0 +1,12 @@
+# Tracking-Daten NIE committen (enthalten Tool-Nutzungs-Historie)
+data/
+*.jsonl
+
+# Generierte Dashboards
+analysis/dashboard.html
+dashboard.html
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
