@@ -20,6 +20,20 @@ assignments). Breitere Abdeckung = eigener Task mit eigenen Tests.
 - `redact→clip`-Komposition: bleibt ≤120 UND redacted
 - Negativ-Fall: benigner String bleibt unangetastet
 
+### Self-Tracking filtern (aus Live-Installation, 2026-06-02)
+Der Hook trackt aktuell auch die eigenen Auswertungs-Aufrufe (`report.py`,
+`dashboard.py`) sowie generell Tool-Nutzung *im* tool-usage-tracker-Projekt
+selbst. Das verrauscht die Statistik leicht.
+
+Optionen:
+- Im Hook: Events überspringen, deren `summary`/`command` `report.py` oder
+  `dashboard.py` enthält, ODER deren `project == "tool-usage-tracker"`.
+- Alternativ erst beim Lesen (Loader/Report) filtern, damit die Rohdaten
+  vollständig bleiben — sauberer, da der Hot-Path simpel bleibt.
+
+**Empfehlung:** beim Lesen filtern (optionales `--exclude-self`-Flag in report/
+dashboard), Rohdaten unangetastet lassen.
+
 ## Iteration 2 (aus Design-Doc §2 Nicht-Ziele)
 - PostToolUse-Hook für Dauer/Erfolg/Fehler (Korrelation via session_id+tool)
 - Codex- & andere-Agent-Adapter (schreiben ins selbe JSONL, anderer `agent`-Wert)
