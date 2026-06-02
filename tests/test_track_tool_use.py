@@ -27,3 +27,15 @@ def test_redact_assignment_secrets():
 
 def test_redact_github_token():
     assert "‹redacted›" in track.redact("ghp_0123456789abcdefABCDEF0123")
+
+
+def test_redact_modern_openai_proj_key():
+    s = track.redact("OPENAI_API_KEY=sk-proj-AbCdEf1234567890XYZdef")
+    assert "‹redacted›" in s
+    assert "sk-proj-AbCdEf" not in s
+
+
+def test_redact_quoted_secret_with_spaces():
+    s = track.redact('password = "my secret pw value"')
+    assert "‹redacted›" in s
+    assert "secret pw value" not in s

@@ -5,9 +5,9 @@ import re
 MAX_LEN = 120
 
 _SECRET_PATTERNS = [
-    re.compile(r"sk-[A-Za-z0-9]{10,}"),
+    re.compile(r"sk-[A-Za-z0-9_-]{10,}"),
     re.compile(r"ghp_[A-Za-z0-9]{20,}"),
-    re.compile(r"(?i)(api[_-]?key|token|password|secret|auth)\s*[=:]\s*\S+"),
+    re.compile(r"(?i)(api[_-]?key|token|password|secret|auth)\s*[=:]\s*(\"[^\"]*\"|'[^']*'|\S+)"),
     re.compile(r"(?i)bearer\s+\S+"),
 ]
 
