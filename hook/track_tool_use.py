@@ -82,6 +82,9 @@ def build_event(raw: dict) -> dict:
     tool_name = raw.get("tool_name") or "unknown"
     tool_input = raw.get("tool_input") or {}
     now = datetime.now(timezone.utc)
+    # ts_local = derselbe Zeitpunkt in System-Lokalzeit (naiv, ohne TZ-Marker,
+    # bewusst menschenlesbar). Aus `now` abgeleitet, nicht zweiter Clock-Read.
+    now_local = now.astimezone()
     is_git = False
     try:
         is_git = bool(cwd) and (Path(str(cwd)) / ".git").exists()
@@ -89,7 +92,7 @@ def build_event(raw: dict) -> dict:
         is_git = False
     return {
         "ts_utc": now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z",
-        "ts_local": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "ts_local": now_local.strftime("%Y-%m-%d %H:%M:%S"),
         "agent": AGENT,
         "tool_name": tool_name,
         "session_id": raw.get("session_id", ""),
