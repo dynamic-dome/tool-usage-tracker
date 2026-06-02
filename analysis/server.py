@@ -111,6 +111,13 @@ canvas{max-height:300px}
 .tree .node.hl{background:rgba(247,118,142,.12);border-radius:4px}
 .badge{font-size:10px;padding:1px 7px;border-radius:10px;color:#0a0e14;font-weight:600}
 .muted{opacity:.55;font-size:11px}
+.tl-session{margin-bottom:18px}
+.tl-session h3{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent);margin:0 0 6px}
+.tl-session h3 .proj{color:var(--fg);opacity:.6;font-weight:400;margin-left:8px}
+.tl-row{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.tl-bar{height:26px;border-radius:5px;padding:0 7px;display:flex;align-items:center;overflow:hidden;white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:11px;color:#0a0e14;cursor:default}
+.tl-bar.fail{color:#0a0e14}
+.tl-bar.open{background:transparent!important;border:1px dashed var(--accent);color:var(--accent)}
 </style></head><body>
 <header>
   <h1>&#9646; TOOL-USAGE COMMAND CENTER</h1>
@@ -142,7 +149,10 @@ canvas{max-height:300px}
 </div>
 
 <div id="tabTimeline" style="display:none">
-  <div class="card"><h2>Timeline</h2><div class="muted">Wird in Task 7 implementiert.</div></div>
+  <div class="card full"><h2>Timeline &mdash; Flow pro Session</h2>
+    <div class="muted" style="margin-bottom:10px">Jede Zeile = eine Session. Balkenbreite &prop; Dauer. Gestrichelt = ungepaart (unvollst&auml;ndig).</div>
+    <div id="timeline"></div>
+  </div>
 </div>
 
 <script>/*CHARTJS*/</script>
@@ -154,6 +164,8 @@ var charts = {};
 var selectedPath = null;
 
 function $(id){ return document.getElementById(id); }
+
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 function destroyChart(key){
   if (charts[key]) { charts[key].destroy(); charts[key] = null; }
@@ -277,7 +289,7 @@ function renderTreemap(data){
     tile.style.flexGrow = String(Math.max(1, cnt));
     tile.style.background = heatColor(frac);
     tile.title = p;
-    tile.innerHTML = '<div>' + lastSegs(p, 2) + '</div><div class="c">' + cnt + '</div>';
+    tile.innerHTML = '<div>' + esc(lastSegs(p, 2)) + '</div><div class="c">' + cnt + '</div>';
     tile.addEventListener('click', function(){
       selectedPath = (selectedPath === p) ? null : p;
       renderTreemap(data);
@@ -316,8 +328,71 @@ function renderTree(data){
     row.className = 'node' + (selectedPath && key === selectedPath ? ' hl' : '');
     row.style.paddingLeft = (n.depth * 18) + 'px';
     var badge = '<span class="badge" style="background:' + heatColor(frac) + '">' + n.count + '</span>';
-    row.innerHTML = '<span>' + n.seg + '</span>' + badge;
+    row.innerHTML = '<span>' + esc(n.seg) + '</span>' + badge;
     tree.appendChild(row);
+  });
+}
+
+function renderTimeline(data){
+  var spans = data.spans || [];
+  var tl = $('timeline');
+  tl.innerHTML = '';
+  if (!spans.length) { tl.innerHTML = '<div class="muted">Keine Spans.</div>'; return; }
+  // Max-Dauer im View für relative Skalierung
+  var maxDur = 0;
+  spans.forEach(function(s){
+    if (s.duration_ms !== null && s.duration_ms !== undefined && s.duration_ms > maxDur) maxDur = s.duration_ms;
+  });
+  if (maxDur <= 0) maxDur = 1;
+  var MINW = 60, MAXW = 360;
+  // Gruppieren nach session_id
+  var groups = {};   // sid -> {sid, project, spans:[]}
+  var order = [];
+  spans.forEach(function(s){
+    var sid = s.session_id || '?';
+    if (!groups[sid]) { groups[sid] = { sid: sid, project: s.project || '', spans: [] }; order.push(sid); }
+    groups[sid].spans.push(s);
+  });
+  order.forEach(function(sid){
+    var g = groups[sid];
+    // Chronologisch; Spans ohne ts_start ans Ende
+    g.spans.sort(function(a, b){
+      var ta = a.ts_start || '', tb = b.ts_start || '';
+      if (!ta && !tb) return 0;
+      if (!ta) return 1;
+      if (!tb) return -1;
+      return ta < tb ? -1 : (ta > tb ? 1 : 0);
+    });
+    var shortSid = String(sid).length > 12 ? String(sid).slice(0, 8) + '…' : String(sid);
+    var sec = document.createElement('div');
+    sec.className = 'tl-session';
+    var head = '<h3>' + esc(shortSid);
+    if (g.project) head += '<span class="proj">' + esc(g.project) + '</span>';
+    head += '</h3>';
+    var rowHtml = '<div class="tl-row">';
+    g.spans.forEach(function(s){
+      var dur = (s.duration_ms !== null && s.duration_ms !== undefined) ? s.duration_ms : null;
+      var w = dur !== null ? Math.round(MINW + (Math.min(dur, maxDur) / maxDur) * (MAXW - MINW)) : MINW;
+      var cls = 'tl-bar';
+      var style = 'width:' + w + 'px;';
+      if (s.ok === true) { cls += ' ok'; style += 'background:' + AC + ';'; }
+      else if (s.ok === false) { cls += ' fail'; style += 'background:' + AC2 + ';'; }
+      else { cls += ' open'; }
+      var tool = s.tool_name || '?';
+      var summ = s.summary || '';
+      var durTxt = dur !== null ? dur + 'ms' : 'offen';
+      var labelParts = [tool];
+      if (summ) labelParts.push(summ);
+      labelParts.push(durTxt);
+      var fullLabel = labelParts.join(' · ');
+      var title = fullLabel;
+      if (s.error) title += ' · ' + s.error;
+      if (s.cwd) title += ' · ' + s.cwd;
+      rowHtml += '<div class="' + cls + '" style="' + style + '" title="' + esc(title) + '">' + esc(fullLabel) + '</div>';
+    });
+    rowHtml += '</div>';
+    sec.innerHTML = head + rowHtml;
+    tl.appendChild(sec);
   });
 }
 
@@ -328,6 +403,7 @@ function renderAll(data){
   renderErr(data);
   renderTreemap(data);
   renderTree(data);
+  renderTimeline(data);
 }
 
 async function refresh(){
@@ -337,7 +413,7 @@ async function refresh(){
     var data = await resp.json();
     renderAll(data);
   } catch (e) {
-    $('kpis').innerHTML = '<div class="kpi"><div class="v">!</div><div class="l">Fehler: ' + e + '</div></div>';
+    $('kpis').innerHTML = '<div class="kpi"><div class="v">!</div><div class="l">Fehler: ' + esc(e && e.message ? e.message : e) + '</div></div>';
   }
 }
 
