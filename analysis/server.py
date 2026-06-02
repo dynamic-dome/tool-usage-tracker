@@ -55,7 +55,10 @@ def make_handler(data_path):
             parsed = urlparse(self.path)
             if parsed.path == "/api/spans":
                 params = parse_query(parsed.query)
-                self._send(200, json.dumps(spans_payload(data_path, params)))
+                try:
+                    self._send(200, json.dumps(spans_payload(data_path, params)))
+                except Exception as e:
+                    self._send(500, json.dumps({"error": str(e)}))
             elif parsed.path == "/":
                 self._send(200, _INDEX_HTML, "text/html")
             else:

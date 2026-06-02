@@ -49,3 +49,30 @@ def test_parse_query_flags():
     assert params["agent"] == "codex"
     assert params["exclude_self"] == "1"
     assert params["since"] == "2026-06-01"
+
+
+def test_spans_payload_error_does_not_crash_handler(tmp_path, monkeypatch):
+    # spans_payload raises -> do_GET should send a 500 JSON, not propagate
+    import io
+
+    def boom(*a, **k):
+        raise ValueError("corrupt data")
+    monkeypatch.setattr(srv, "spans_payload", boom)
+
+    Handler = srv.make_handler("dummy-path")
+    # Minimal fake request plumbing to drive do_GET without a real socket
+    captured = {}
+
+    class FakeHandler(Handler):
+        def __init__(self):
+            self.path = "/api/spans"
+            self.wfile = io.BytesIO()
+        def send_response(self, code): captured["code"] = code
+        def send_header(self, *a, **k): pass
+        def end_headers(self): pass
+
+    h = FakeHandler()
+    h.do_GET()
+    assert captured["code"] == 500
+    body = h.wfile.getvalue().decode("utf-8")
+    assert "error" in body
