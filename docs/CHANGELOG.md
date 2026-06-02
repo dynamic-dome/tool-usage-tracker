@@ -8,3 +8,6 @@
   HTML-Dashboard (`analysis/dashboard.py`) mit inline Chart.js (offline-fähig).
 - 24 Tests grün. End-to-End gegen echtes Hook-Skript verifiziert (Secret redacted, exit 0).
 - install.md mit Settings-Snippet + Auswertungs-/Test-Anleitung.
+- Fix: fehlendes `}` in cHeat-Chart-Config (`_TEMPLATE`) brach das gesamte
+  Dashboard-JS ab (leere KPIs/Charts trotz korrekter Daten). Dashboard jetzt
+  browser-verifiziert (Playwright: 0 Console-Errors, alle 4 Charts + KPIs rendern).

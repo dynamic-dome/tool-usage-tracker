@@ -93,7 +93,7 @@ new Chart(cTools,{type:'bar',data:{labels:Object.keys(D.tools),datasets:[{data:O
 new Chart(cProj,{type:'bar',data:{labels:Object.keys(D.projects),datasets:[{data:Object.values(D.projects),backgroundColor:AC2}]},options:{indexAxis:'y',plugins:{legend:{display:false}}}});
 new Chart(cDays,{type:'line',data:{labels:Object.keys(D.days),datasets:[{data:Object.values(D.days),borderColor:AC,backgroundColor:'rgba(57,208,216,.15)',fill:true,tension:.3}]},options:{plugins:{legend:{display:false}}}});
 const pts=[];D.heat.forEach((row,d)=>row.forEach((v,h)=>{if(v)pts.push({x:h,y:d,r:Math.min(4+v*2,20)})}));
-new Chart(cHeat,{type:'bubble',data:{datasets:[{data:pts,backgroundColor:'rgba(57,208,216,.5)'}]},options:{plugins:{legend:{display:false}},scales:{x:{min:-.5,max:23.5,title:{display:true,text:'Stunde'}},y:{min:-.5,max:6.5,ticks:{callback:v=>D.weekdays[v]||''}}}});
+new Chart(cHeat,{type:'bubble',data:{datasets:[{data:pts,backgroundColor:'rgba(57,208,216,.5)'}]},options:{plugins:{legend:{display:false}},scales:{x:{min:-.5,max:23.5,title:{display:true,text:'Stunde'}},y:{min:-.5,max:6.5,ticks:{callback:v=>D.weekdays[v]||''}}}}});
 </script></body></html>"""
 
 

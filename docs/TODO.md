@@ -34,6 +34,18 @@ Optionen:
 **Empfehlung:** beim Lesen filtern (optionales `--exclude-self`-Flag in report/
 dashboard), Rohdaten unangetastet lassen.
 
+### Lehre: eingebettetes JS browser-/node-prüfen (Bug 2026-06-02)
+Das HTML-Dashboard renderte zunächst leer (KPIs + Charts), obwohl die Daten
+korrekt eingebettet waren — ein fehlendes `}` in der cHeat-Chart-Config (`_TEMPLATE`)
+brach das gesamte JavaScript ab (`Unexpected token ')'`). Der Smoke-Test prüfte
+nur Byte-Größe + Platzhalter-Ersetzung, NICHT die JS-Syntax.
+
+**How to apply:** Beim Generieren von HTML mit eingebettetem JS den Script-Block
+extrahieren und mit `node --check` validieren (oder per Playwright laden +
+Console-Errors prüfen). Byte-Count beweist nur, dass Chart.js drin ist, nicht
+dass das Script läuft. → Idee: Smoke-Test in dashboard.py-Workflow um node-check
+ergänzen.
+
 ## Iteration 2 (aus Design-Doc §2 Nicht-Ziele)
 - PostToolUse-Hook für Dauer/Erfolg/Fehler (Korrelation via session_id+tool)
 - Codex- & andere-Agent-Adapter (schreiben ins selbe JSONL, anderer `agent`-Wert)
