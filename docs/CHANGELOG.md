@@ -54,3 +54,7 @@
     aber in diesem Modus keine projektlokale Hook-Eventdatei erzeugt.
   - Simulierte Codex-Payloads bleiben funktionsfaehig; der interaktive `/hooks`-
     Trust-Smoke bleibt als separater manueller Check offen.
+- Live-Dashboard-Template ausgelagert:
+  - `analysis/dashboard_template.html` enthaelt jetzt HTML/CSS/JS.
+  - `analysis/server.py` bleibt auf HTTP/API + Template-Laden fokussiert.
+  - Server-Tests pruefen, dass das Template als externes Asset existiert.

@@ -36,13 +36,9 @@ ergänzen.
 - Codex- & andere-Agent-Adapter (schreiben ins selbe JSONL, anderer `agent`-Wert) —
   noch offen.
 
-## Follow-up nächste Frontend-Iteration (P1)
+## Erledigt (2026-06-02, Folgeiteration)
 
 ### Inline-HTML/JS-Template aus server.py auslagern
-`analysis/server.py` ist ~440 Zeilen, davon der Großteil das `_PAGE_TEMPLATE`-Stringliteral
-(HTML+CSS+JS). **Vor dem nächsten Frontend-Feature** das Template in ein separates Asset
-auslagern (z.B. `analysis/dashboard_template.html`, zur Laufzeit eingelesen analog zu
-Chart.js aus `vendor/`). Gründe: Server-Logik wird wieder reviewbar, das eingebettete JS
-lässt sich isoliert `node --check`-/lint-/Playwright-prüfen (siehe Lehre oben), und der
-HTTP-Code bleibt klein. Solange das Template inline bleibt, wächst die Datei mit jedem
-UI-Feature und der Hot-Path verschwindet im Markup.
+Erledigt: `analysis/server.py` liest das Live-Dashboard jetzt aus
+`analysis/dashboard_template.html`; Chart.js wird weiterhin zur Laufzeit aus `vendor/`
+inline ersetzt. Tests prüfen, dass das Template extern liegt.

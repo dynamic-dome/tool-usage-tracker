@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 SERVER = Path(__file__).resolve().parents[1] / "analysis" / "server.py"
+TEMPLATE = Path(__file__).resolve().parents[1] / "analysis" / "dashboard_template.html"
 _spec = importlib.util.spec_from_file_location("server", SERVER)
 srv = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(srv)
@@ -167,6 +168,15 @@ def test_live_dashboard_template_mentions_pairing_quality():
     html = srv.index_html()
     assert "Pairing-Rate" in html
     assert "Unpaired" in html
+
+
+def test_live_dashboard_template_is_external_asset():
+    assert TEMPLATE.exists()
+    template = TEMPLATE.read_text(encoding="utf-8")
+    assert "/*CHARTJS*/" in template
+    assert "TOOL-USAGE COMMAND CENTER" in template
+    server_source = SERVER.read_text(encoding="utf-8")
+    assert "_PAGE_TEMPLATE" not in server_source
 
 
 def test_spans_payload_error_does_not_crash_handler(tmp_path, monkeypatch):
