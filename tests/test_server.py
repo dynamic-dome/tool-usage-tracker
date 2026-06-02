@@ -46,15 +46,16 @@ def test_spans_json_respects_exclude_self(tmp_path):
 
 def test_spans_payload_lists_distinct_agents_and_projects(tmp_path):
     # Für die Filter-Dropdowns: sortierte, eindeutige Werte aller Events.
+    # (projects nur git-Repos -> Fixtures als is_git_repo=true markiert)
     p = _write(tmp_path, [
         {"phase": "pre", "session_id": "s1", "tool_name": "Bash",
          "ts_utc": "2026-06-02T10:00:00.000Z", "project": "zeta", "cwd": "c",
-         "summary": "x", "agent": "codex"},
+         "summary": "x", "agent": "codex", "is_git_repo": True},
         {"phase": "post", "session_id": "s1", "tool_name": "Bash",
          "ts_utc": "2026-06-02T10:00:00.200Z", "ok": True, "agent": "codex"},
         {"phase": "pre", "session_id": "s2", "tool_name": "Read",
          "ts_utc": "2026-06-02T10:01:00.000Z", "project": "alpha", "cwd": "c",
-         "summary": "y", "agent": "claude-code"},
+         "summary": "y", "agent": "claude-code", "is_git_repo": True},
     ])
     payload = srv.spans_payload(str(p), {})
     assert payload["agents"] == ["claude-code", "codex"]   # sortiert, unique
@@ -67,10 +68,10 @@ def test_spans_payload_filter_options_ignore_active_filter(tmp_path):
     p = _write(tmp_path, [
         {"phase": "pre", "session_id": "s1", "tool_name": "Bash",
          "ts_utc": "2026-06-02T10:00:00.000Z", "project": "zeta", "cwd": "c",
-         "summary": "x", "agent": "codex"},
+         "summary": "x", "agent": "codex", "is_git_repo": True},
         {"phase": "pre", "session_id": "s2", "tool_name": "Read",
          "ts_utc": "2026-06-02T10:01:00.000Z", "project": "alpha", "cwd": "c",
-         "summary": "y", "agent": "claude-code"},
+         "summary": "y", "agent": "claude-code", "is_git_repo": True},
     ])
     payload = srv.spans_payload(str(p), {"agent": "codex"})
     # gefilterte spans betreffen nur codex/zeta, aber die Optionen bleiben voll
@@ -85,11 +86,45 @@ def test_spans_payload_filter_options_skip_empty_values(tmp_path):
          "ts_utc": "2026-06-02T10:00:00.000Z", "cwd": "c", "summary": "x"},
         {"phase": "pre", "session_id": "s2", "tool_name": "Read",
          "ts_utc": "2026-06-02T10:01:00.000Z", "project": "alpha", "cwd": "c",
-         "summary": "y", "agent": "claude-code"},
+         "summary": "y", "agent": "claude-code", "is_git_repo": True},
     ])
     payload = srv.spans_payload(str(p), {})
     assert payload["agents"] == ["claude-code"]
     assert payload["projects"] == ["alpha"]
+
+
+def test_projects_dropdown_only_git_repos(tmp_path):
+    # projects-Dropdown listet NUR Projekte, die mind. 1 Event mit
+    # is_git_repo=true haben — cwd-Ordner-Rauschen (.agent-memory, plans, …)
+    # fliegt raus.
+    p = _write(tmp_path, [
+        {"phase": "pre", "session_id": "s1", "tool_name": "Bash",
+         "ts_utc": "2026-06-02T10:00:00.000Z", "project": "real-repo", "cwd": "c",
+         "summary": "x", "agent": "claude-code", "is_git_repo": True},
+        {"phase": "pre", "session_id": "s2", "tool_name": "Read",
+         "ts_utc": "2026-06-02T10:01:00.000Z", "project": "plans", "cwd": "c",
+         "summary": "y", "agent": "claude-code", "is_git_repo": False},
+        {"phase": "pre", "session_id": "s3", "tool_name": "Read",
+         "ts_utc": "2026-06-02T10:02:00.000Z", "project": "noise", "cwd": "c",
+         "summary": "z", "agent": "claude-code"},  # gar kein is_git_repo-Feld
+    ])
+    payload = srv.spans_payload(str(p), {})
+    assert payload["projects"] == ["real-repo"]
+
+
+def test_projects_dropdown_one_git_event_qualifies(tmp_path):
+    # Ein Projekt mit gemischten Events (mind. 1 git=true) zählt als git-Repo —
+    # robust gegen ein einzelnes Ausreißer-nongit-Event (real: 'wiki' 13/1).
+    p = _write(tmp_path, [
+        {"phase": "pre", "session_id": "s1", "tool_name": "Bash",
+         "ts_utc": "2026-06-02T10:00:00.000Z", "project": "mixed", "cwd": "c",
+         "summary": "x", "agent": "claude-code", "is_git_repo": False},
+        {"phase": "pre", "session_id": "s2", "tool_name": "Read",
+         "ts_utc": "2026-06-02T10:01:00.000Z", "project": "mixed", "cwd": "c",
+         "summary": "y", "agent": "claude-code", "is_git_repo": True},
+    ])
+    payload = srv.spans_payload(str(p), {})
+    assert payload["projects"] == ["mixed"]
 
 
 def test_parse_query_flags():

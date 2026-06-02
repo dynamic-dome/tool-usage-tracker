@@ -29,6 +29,15 @@ def _distinct_sorted(events, key):
     return sorted({v for ev in events if (v := ev.get(key))})
 
 
+def _git_projects_sorted(events):
+    """Sortierte, eindeutige Projekte, die mindestens EIN Event mit
+    is_git_repo=true haben — filtert cwd-Ordner-Rauschen (.agent-memory, plans,
+    queries …) aus dem project-Dropdown. Ein einzelnes git-Event qualifiziert
+    (robust gegen vereinzelte nongit-Ausreißer, z.B. 'wiki' 13/1)."""
+    return sorted({v for ev in events
+                   if (v := ev.get("project")) and ev.get("is_git_repo")})
+
+
 def spans_payload(data_path, params):
     evs = load_events(data_path,
                       agent=params.get("agent"),
@@ -44,7 +53,7 @@ def spans_payload(data_path, params):
         "total_events": len(evs),
         "spans": spans,
         "agents": _distinct_sorted(all_evs, "agent"),
-        "projects": _distinct_sorted(all_evs, "project"),
+        "projects": _git_projects_sorted(all_evs),
         "success_by_tool": success_rate_by(spans, "tool_name"),
         "success_by_project": success_rate_by(spans, "project"),
         "duration_by_tool": duration_stats_by(spans, "tool_name"),
