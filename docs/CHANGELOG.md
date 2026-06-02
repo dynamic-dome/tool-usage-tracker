@@ -58,3 +58,9 @@
   - `analysis/dashboard_template.html` enthaelt jetzt HTML/CSS/JS.
   - `analysis/server.py` bleibt auf HTTP/API + Template-Laden fokussiert.
   - Server-Tests pruefen, dass das Template als externes Asset existiert.
+- Dashboard-Smokes automatisiert:
+  - `analysis/dashboard_smoke.py` extrahiert Script-Bloecke, prueft sie mit
+    `node --check` und kann bei vorhandenen Node-Playwright-Abhaengigkeiten einen
+    Browser-Smoke gegen das Live-Dashboard ausfuehren.
+  - `tests/test_dashboard_smoke.py` prueft Template-Scripts und skippt Browser-
+    Checks sauber, wenn Playwright lokal nicht verfuegbar ist.
