@@ -170,13 +170,22 @@ def test_build_event_has_all_required_fields():
            "hook_event_name": "PreToolUse"}
     ev = track.build_event(raw)
     for k in ("ts_utc", "ts_local", "agent", "tool_name", "session_id",
-              "cwd", "project", "is_git_repo", "hook_event", "summary", "schema_v"):
+              "cwd", "project", "is_git_repo", "hook_event", "summary", "schema_v",
+              "phase"):
         assert k in ev
     assert ev["agent"] == "claude-code"
     assert ev["tool_name"] == "Bash"
     assert ev["project"] == "Demo"
     assert ev["summary"] == "ls"
-    assert ev["schema_v"] == 1
+    assert ev["schema_v"] == 2
+
+
+def test_build_event_has_phase_pre_and_schema_2():
+    ev = track.build_event({"session_id": "s", "cwd": r"C:\proj\Demo",
+                            "tool_name": "Bash", "tool_input": {"command": "ls"},
+                            "hook_event_name": "PreToolUse"})
+    assert ev["schema_v"] == 2
+    assert ev["phase"] == "pre"
 
 
 def test_build_event_missing_fields_no_crash():

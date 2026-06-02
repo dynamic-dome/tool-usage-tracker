@@ -87,7 +87,7 @@ def _events_path() -> Path:
 
 
 AGENT = "claude-code"
-SCHEMA_V = 1
+SCHEMA_V = 2
 
 
 def build_event(raw: dict) -> dict:
@@ -116,6 +116,7 @@ def build_event(raw: dict) -> dict:
         "is_git_repo": is_git,
         "hook_event": raw.get("hook_event_name", "PreToolUse"),
         "summary": build_summary(tool_name, tool_input),
+        "phase": "pre",
         "schema_v": SCHEMA_V,
     }
 
