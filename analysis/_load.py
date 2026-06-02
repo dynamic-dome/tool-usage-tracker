@@ -58,61 +58,95 @@ def _duration_ms(start_ts, end_ts):
         return None
 
 
+def _paired_span(pre, post):
+    return {
+        "tool_name": pre.get("tool_name"), "agent": pre.get("agent"),
+        "session_id": pre.get("session_id"), "project": pre.get("project"),
+        "summary": pre.get("summary"), "cwd": pre.get("cwd"),
+        "ts_start": pre.get("ts_utc"), "ts_end": post.get("ts_utc"),
+        "duration_ms": _duration_ms(pre.get("ts_utc", ""), post.get("ts_utc", "")),
+        "ok": post.get("ok"), "error": post.get("error", ""), "paired": True,
+    }
+
+
+def _orphan_post_span(ev):
+    return {
+        "tool_name": ev.get("tool_name"), "agent": ev.get("agent"),
+        "session_id": ev.get("session_id"), "project": None,
+        "summary": None, "cwd": None,
+        "ts_start": None, "ts_end": ev.get("ts_utc"),
+        "duration_ms": None, "ok": None, "error": ev.get("error", ""),
+        "paired": False,
+    }
+
+
+def _unpaired_pre_span(pre):
+    return {
+        "tool_name": pre.get("tool_name"), "agent": pre.get("agent"),
+        "session_id": pre.get("session_id"), "project": pre.get("project"),
+        "summary": pre.get("summary"), "cwd": pre.get("cwd"),
+        "ts_start": pre.get("ts_utc"), "ts_end": None,
+        "duration_ms": None, "ok": None, "error": "", "paired": False,
+    }
+
+
 def pair_events(events):
-    """Verschmilzt pre+post zu Spans (session_id + tool_name + FIFO).
+    """Verschmilzt pre+post zu Spans. Bevorzugt exakten Match per
+    (session_id, tool_use_id); fällt auf (session_id, tool_name)-FIFO zurück,
+    wenn keine tool_use_id vorhanden ist (Schema v1/v2 ohne ID, Altdaten).
     Ungepaarte Events bleiben erhalten (paired=False), zählen nicht in Aggregate."""
     spans = []
-    # offene Pres je (session_id, tool_name) als FIFO-Queue
-    open_pre = {}
-    used_pre = set()
-    # erst alle Events in Reihenfolge; Post paart mit ältestem offenen Pre
     ordered = sorted(events, key=lambda e: str(e.get("ts_utc", "")))
-    # Index der Pres pro Key
+
+    # --- Pass 1: exakter Match per (session_id, tool_use_id) ---
+    # Pres MIT nicht-leerer tool_use_id indexieren (session-scoped Key).
+    pre_by_id = {}
+    consumed = set()  # id() der bereits verbrauchten pre/post-Events
     for ev in ordered:
-        if _phase(ev) == "pre":
-            key = (ev.get("session_id"), ev.get("tool_name"))
-            open_pre.setdefault(key, []).append(ev)
+        if _phase(ev) != "pre":
+            continue
+        tuid = ev.get("tool_use_id")
+        if tuid:
+            pre_by_id.setdefault((ev.get("session_id"), tuid), []).append(ev)
+
     for ev in ordered:
         if _phase(ev) != "post":
             continue
+        tuid = ev.get("tool_use_id")
+        if not tuid:
+            continue
+        queue = pre_by_id.get((ev.get("session_id"), tuid), [])
+        match = next((p for p in queue if id(p) not in consumed), None)
+        if match is not None:
+            consumed.add(id(match))
+            consumed.add(id(ev))
+            spans.append(_paired_span(match, ev))
+        # kein id-Pre gefunden -> Post bleibt für FIFO/Orphan-Pass übrig
+
+    # --- Pass 2: FIFO über die noch nicht verbrauchten Events ---
+    open_pre = {}
+    used_pre = set()
+    for ev in ordered:
+        if _phase(ev) == "pre" and id(ev) not in consumed:
+            key = (ev.get("session_id"), ev.get("tool_name"))
+            open_pre.setdefault(key, []).append(ev)
+    for ev in ordered:
+        if _phase(ev) != "post" or id(ev) in consumed:
+            continue
         key = (ev.get("session_id"), ev.get("tool_name"))
         queue = open_pre.get(key, [])
-        match = None
-        for pre in queue:
-            if id(pre) not in used_pre:
-                match = pre
-                used_pre.add(id(pre))
-                break
+        match = next((p for p in queue if id(p) not in used_pre), None)
         if match is not None:
-            spans.append({
-                "tool_name": match.get("tool_name"), "agent": match.get("agent"),
-                "session_id": match.get("session_id"), "project": match.get("project"),
-                "summary": match.get("summary"), "cwd": match.get("cwd"),
-                "ts_start": match.get("ts_utc"), "ts_end": ev.get("ts_utc"),
-                "duration_ms": _duration_ms(match.get("ts_utc", ""), ev.get("ts_utc", "")),
-                "ok": ev.get("ok"), "error": ev.get("error", ""), "paired": True,
-            })
+            used_pre.add(id(match))
+            spans.append(_paired_span(match, ev))
         else:
-            # verwaistes Post
-            spans.append({
-                "tool_name": ev.get("tool_name"), "agent": ev.get("agent"),
-                "session_id": ev.get("session_id"), "project": None,
-                "summary": None, "cwd": None,
-                "ts_start": None, "ts_end": ev.get("ts_utc"),
-                "duration_ms": None, "ok": None, "error": ev.get("error", ""),
-                "paired": False,
-            })
-    # ungepaarte Pres
+            spans.append(_orphan_post_span(ev))
+
+    # ungepaarte Pres (aus dem FIFO-Pool; id-gepaarte sind schon consumed)
     for queue in open_pre.values():
         for pre in queue:
             if id(pre) not in used_pre:
-                spans.append({
-                    "tool_name": pre.get("tool_name"), "agent": pre.get("agent"),
-                    "session_id": pre.get("session_id"), "project": pre.get("project"),
-                    "summary": pre.get("summary"), "cwd": pre.get("cwd"),
-                    "ts_start": pre.get("ts_utc"), "ts_end": None,
-                    "duration_ms": None, "ok": None, "error": "", "paired": False,
-                })
+                spans.append(_unpaired_pre_span(pre))
     return spans
 
 

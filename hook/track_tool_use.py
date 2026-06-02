@@ -111,6 +111,7 @@ def build_event(raw: dict) -> dict:
         "agent": AGENT,
         "tool_name": tool_name,
         "session_id": raw.get("session_id", ""),
+        "tool_use_id": raw.get("tool_use_id", ""),
         "cwd": cwd,
         "project": derive_project(cwd),
         "is_git_repo": is_git,

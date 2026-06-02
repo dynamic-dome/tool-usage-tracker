@@ -170,8 +170,8 @@ def test_build_event_has_all_required_fields():
            "hook_event_name": "PreToolUse"}
     ev = track.build_event(raw)
     for k in ("ts_utc", "ts_local", "agent", "tool_name", "session_id",
-              "cwd", "project", "is_git_repo", "hook_event", "summary", "schema_v",
-              "phase"):
+              "tool_use_id", "cwd", "project", "is_git_repo", "hook_event",
+              "summary", "schema_v", "phase"):
         assert k in ev
     assert ev["agent"] == "claude-code"
     assert ev["tool_name"] == "Bash"

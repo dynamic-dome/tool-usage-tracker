@@ -106,3 +106,63 @@ def test_path_activity_counts_by_cwd():
     act = load.path_activity(spans)
     assert act["C:/a/dual-bridge"] == 2
     assert act["C:/a/Hooks-bau"] == 1
+
+
+# --- tool_use_id-basierte Paarung (exakter Match, FIFO nur Fallback) ---
+# Hinweis: die bestehenden _pre/_post bauen Events OHNE tool_use_id (FIFO-Pfad).
+# Die folgenden Helfer bauen Events MIT tool_use_id (exakter Match-Pfad).
+
+
+def _pre_id(sid, tool, t, tuid, **kw):
+    d = {"phase": "pre", "session_id": sid, "tool_name": tool, "ts_utc": t,
+         "tool_use_id": tuid, "project": "P", "summary": "s", "cwd": "c",
+         "agent": "claude-code"}
+    d.update(kw)
+    return d
+
+
+def _post_id(sid, tool, t, tuid, ok=True, error=""):
+    return {"phase": "post", "session_id": sid, "tool_name": tool, "ts_utc": t,
+            "tool_use_id": tuid, "ok": ok, "error": error, "agent": "claude-code"}
+
+
+def test_pairs_by_tool_use_id_when_posts_out_of_order():
+    # Two concurrent Bash calls; Post B arrives BEFORE Post A.
+    # With id-based pairing each post must attach to ITS OWN pre, regardless of order.
+    evs = [
+        _pre_id("s1", "Bash", "2026-06-02T10:00:00.000Z", "idA", summary="A"),
+        _pre_id("s1", "Bash", "2026-06-02T10:00:00.100Z", "idB", summary="B"),
+        _post_id("s1", "Bash", "2026-06-02T10:00:00.200Z", "idB", ok=False, error="b failed"),
+        _post_id("s1", "Bash", "2026-06-02T10:00:00.900Z", "idA", ok=True),
+    ]
+    spans = load.pair_events(evs)
+    paired = {s["summary"]: s for s in spans if s["paired"]}
+    assert paired["A"]["ok"] is True
+    assert paired["A"]["duration_ms"] == 900
+    assert paired["B"]["ok"] is False
+    assert paired["B"]["error"] == "b failed"
+    assert paired["B"]["duration_ms"] == 100
+
+
+def test_id_pairing_falls_back_to_fifo_when_no_id():
+    # Events without tool_use_id still pair by FIFO (backward compat / schema v1/v2 no-id)
+    evs = [
+        {"phase": "pre", "session_id": "s1", "tool_name": "Read",
+         "ts_utc": "2026-06-02T10:00:00.000Z", "summary": "x", "project": "P",
+         "cwd": "c", "agent": "claude-code"},
+        {"phase": "post", "session_id": "s1", "tool_name": "Read",
+         "ts_utc": "2026-06-02T10:00:00.300Z", "ok": True, "agent": "claude-code"},
+    ]
+    spans = load.pair_events(evs)
+    assert len([s for s in spans if s["paired"]]) == 1
+    assert spans[0]["duration_ms"] == 300
+
+
+def test_id_pairing_does_not_cross_sessions():
+    evs = [
+        _pre_id("s1", "Bash", "2026-06-02T10:00:00.000Z", "idX"),
+        _post_id("s2", "Bash", "2026-06-02T10:00:00.300Z", "idX"),  # same id, different session
+    ]
+    spans = load.pair_events(evs)
+    # Different sessions must NOT pair even with same id (id is only unique within a session/run)
+    assert all(s["paired"] is False for s in spans)
