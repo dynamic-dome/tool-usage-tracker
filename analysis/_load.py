@@ -137,6 +137,8 @@ def _paired_span(pre, post, method):
         "pairing_method": method,
         "pairing_confidence": "exact" if method == "tool_use_id" else "fallback",
         "orphan_kind": "",
+        "git_branch": pre.get("git_branch", ""),
+        "file_ext": pre.get("file_ext", ""),
     }
     span.update(_classification(pre))
     return span
@@ -166,6 +168,8 @@ def _unpaired_pre_span(pre):
         "duration_ms": None, "ok": None, "error": "", "paired": False,
         "pairing_method": "orphan", "pairing_confidence": "none",
         "orphan_kind": "pre_without_post",
+        "git_branch": pre.get("git_branch", ""),
+        "file_ext": pre.get("file_ext", ""),
     }
     span.update(_classification(pre))
     return span

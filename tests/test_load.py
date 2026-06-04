@@ -80,3 +80,28 @@ def test_exclude_self_off_by_default(tmp_path):
          "ts_utc": "2026-06-02T10:00:00.000Z"},
     ])
     assert len(load.load_events(p)) == 1  # Rohdaten unangetastet ohne Flag
+
+
+def test_pair_events_propagates_git_branch_and_file_ext():
+    events = [
+        {"phase": "pre", "session_id": "s", "tool_use_id": "t1", "tool_name": "Edit",
+         "ts_utc": "2026-06-04T10:00:00.000Z", "cwd": "x", "project": "p",
+         "git_branch": "main", "file_ext": "py"},
+        {"phase": "post", "session_id": "s", "tool_use_id": "t1", "tool_name": "Edit",
+         "ts_utc": "2026-06-04T10:00:00.100Z", "ok": True},
+    ]
+    spans = load.pair_events(events)
+    assert spans[0]["git_branch"] == "main"
+    assert spans[0]["file_ext"] == "py"
+
+
+def test_unpaired_pre_keeps_git_branch_and_file_ext():
+    events = [
+        {"phase": "pre", "session_id": "s", "tool_use_id": "t9", "tool_name": "Read",
+         "ts_utc": "2026-06-04T10:00:00.000Z", "cwd": "x", "project": "p",
+         "git_branch": "feature/x", "file_ext": "md"},
+    ]
+    spans = load.pair_events(events)
+    s = [x for x in spans if not x.get("paired")][0]
+    assert s["git_branch"] == "feature/x"
+    assert s["file_ext"] == "md"
