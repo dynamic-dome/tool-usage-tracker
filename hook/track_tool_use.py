@@ -215,18 +215,36 @@ def derive_project(cwd) -> str:
     return parts[-1] if parts else "unknown"
 
 
+def _read_head_line(head: Path) -> str:
+    """Erste Zeile von `.git/HEAD`, bounded gelesen (Hot-Path: nie die ganze
+    Datei in den Speicher ziehen — HEAD ist real immer < 100 Bytes)."""
+    raw = head.read_bytes()[:256]
+    return raw.decode("utf-8", "replace").splitlines()[0].strip() if raw else ""
+
+
 def _git_branch(cwd) -> str | None:
     """Aktueller Branch aus `.git/HEAD` — reiner Dateiread, KEIN subprocess
     (Hot-Path darf nie blockieren). `ref: refs/heads/<branch>` -> <branch>;
-    Detached HEAD (direkter Hash) -> auf 7 Zeichen gekuerzt. Fail-safe: None
-    bei fehlendem .git oder jedem Fehler."""
+    Detached HEAD (direkter Hash) -> auf 7 Zeichen gekuerzt; nur `refs/heads/`
+    gilt als Branch (refs/tags|remotes -> None). Worktree: `.git` ist eine
+    DATEI mit `gitdir: <pfad>` -> dort liegt HEAD. Fail-safe: None bei jedem
+    Fehler/fehlendem .git."""
     if not cwd:
         return None
     try:
-        head = Path(str(cwd)) / ".git" / "HEAD"
-        content = head.read_text(encoding="utf-8").strip()
+        git = Path(str(cwd)) / ".git"
+        if git.is_file():  # Worktree: .git -> "gitdir: <pfad>"-Pointer aufloesen
+            pointer = _read_head_line(git)
+            if pointer.startswith("gitdir:"):
+                git = Path(pointer.split(":", 1)[1].strip())
+            else:
+                return None
+        content = _read_head_line(git / "HEAD")
         if content.startswith("ref:"):
-            return content.split("refs/heads/", 1)[-1].strip() or None
+            ref = content[4:].strip()
+            if ref.startswith("refs/heads/"):
+                return ref[len("refs/heads/"):] or None
+            return None  # refs/tags|remotes o.ae. ist kein Branch
         return content[:7] if content else None
     except Exception:
         return None

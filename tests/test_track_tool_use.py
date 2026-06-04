@@ -424,11 +424,44 @@ def test_git_branch_handles_nested_branch_name(tmp_path):
 
 
 def test_git_branch_detached_head_returns_short_hash(tmp_path):
-    # Detached HEAD: .git/HEAD enthaelt direkt einen 40-Zeichen-Hash
+    # Detached HEAD: .git/HEAD enthaelt direkt einen 40-Zeichen-Hash (kein
+    # "ref:"-Praefix) -> auf 7 Zeichen gekuerzt.
     git = tmp_path / ".git"
     git.mkdir()
     (git / "HEAD").write_text("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0\n", encoding="utf-8")
     assert track._git_branch(str(tmp_path)) == "a1b2c3d"  # gekuerzt auf 7
+
+
+def test_git_branch_non_heads_ref_returns_none(tmp_path):
+    # MI-1: HEAD zeigt auf refs/tags/ oder refs/remotes/ (nicht refs/heads/).
+    # Darf NICHT den rohen "ref: ..."-String als Branchname zurueckliefern.
+    git = tmp_path / ".git"
+    git.mkdir()
+    (git / "HEAD").write_text("ref: refs/tags/v1.0.0\n", encoding="utf-8")
+    assert track._git_branch(str(tmp_path)) is None
+
+
+def test_git_branch_truncates_pathological_huge_head(tmp_path):
+    # M-1: ein riesiges .git/HEAD darf nicht komplett gelesen werden.
+    # Realer Branchname steht in Zeile 1; der Rest (Muell) wird ignoriert,
+    # und das Ergebnis bleibt klein.
+    git = tmp_path / ".git"
+    git.mkdir()
+    (git / "HEAD").write_text("ref: refs/heads/main\n" + "x" * 5_000_000, encoding="utf-8")
+    out = track._git_branch(str(tmp_path))
+    assert out == "main"
+
+
+def test_git_branch_resolves_worktree_gitdir_pointer(tmp_path):
+    # MI-2: in einem Worktree ist .git eine DATEI mit "gitdir: <pfad>".
+    # Der Branch steht in <gitdir>/HEAD.
+    real_gitdir = tmp_path / "realgit" / "worktrees" / "wt1"
+    real_gitdir.mkdir(parents=True)
+    (real_gitdir / "HEAD").write_text("ref: refs/heads/wt-branch\n", encoding="utf-8")
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / ".git").write_text(f"gitdir: {real_gitdir}\n", encoding="utf-8")
+    assert track._git_branch(str(work)) == "wt-branch"
 
 
 def test_git_branch_returns_none_without_git(tmp_path):
