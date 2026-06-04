@@ -284,3 +284,27 @@ def test_spans_payload_assigns_turn_index_and_threshold(tmp_path):
     payload = srv.spans_payload(str(ev), {})
     assert "turn_gap_ms" in payload
     assert all("turn_index" in s for s in payload["spans"] if s.get("ts_start"))
+
+
+def test_spans_payload_splits_turns_on_large_gap(tmp_path):
+    # Zwei gepaarte Spans derselben Session, getrennt durch eine 60s-Pause
+    # (> Fallback-Schwelle 30s) -> der Server muss zwei verschiedene turn_index
+    # vergeben. Prueft den Split-Pfad (nicht nur den Fallback-Wert).
+    import json as _json
+    ev = tmp_path / "ev.jsonl"
+    rows = [
+        {"phase": "pre", "session_id": "s", "tool_use_id": "t1", "tool_name": "Read",
+         "ts_utc": "2026-06-04T10:00:00.000Z", "cwd": "x", "project": "p"},
+        {"phase": "post", "session_id": "s", "tool_use_id": "t1", "tool_name": "Read",
+         "ts_utc": "2026-06-04T10:00:00.100Z", "ok": True},
+        {"phase": "pre", "session_id": "s", "tool_use_id": "t2", "tool_name": "Read",
+         "ts_utc": "2026-06-04T10:01:00.200Z", "cwd": "x", "project": "p"},
+        {"phase": "post", "session_id": "s", "tool_use_id": "t2", "tool_name": "Read",
+         "ts_utc": "2026-06-04T10:01:00.300Z", "ok": True},
+    ]
+    ev.write_text("\n".join(_json.dumps(r) for r in rows), encoding="utf-8")
+    payload = srv.spans_payload(str(ev), {})
+    dated = [s for s in payload["spans"] if s.get("ts_start")]
+    turn_indices = sorted({s["turn_index"] for s in dated})
+    assert turn_indices == [0, 1]  # echte Split in zwei Turns
+    assert 5000 <= payload["turn_gap_ms"] <= 120000
