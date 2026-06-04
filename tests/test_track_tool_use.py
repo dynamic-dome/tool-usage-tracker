@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 HOOK = Path(__file__).resolve().parents[1] / "hook" / "track_tool_use.py"
 _spec = importlib.util.spec_from_file_location("track_tool_use", HOOK)
 track = importlib.util.module_from_spec(_spec)
@@ -182,6 +184,18 @@ def test_derive_project_basename():
 def test_derive_project_fallback_unknown():
     assert track.derive_project("") == "unknown"
     assert track.derive_project(None) == "unknown"
+
+
+@pytest.mark.parametrize("cwd,expected", [
+    (r"C:\Users\domes\AI\Hooks-bau", "Hooks-bau"),  # Windows
+    ("/home/dome/projects/dual-bridge", "dual-bridge"),  # POSIX
+    (r"C:/mixed\sep/Proj", "Proj"),                  # gemischte Separatoren
+    ("C:\\trailing\\Proj\\", "Proj"),                # trailing separator
+])
+def test_derive_project_is_platform_portable(cwd, expected):
+    # derive_project muss Windows- UND POSIX-Pfade unabhaengig vom Host-OS
+    # korrekt auf den Basisordner reduzieren (sonst falsche project-Werte auf CI).
+    assert track.derive_project(cwd) == expected
 
 
 def test_events_path_uses_env_override(tmp_path, monkeypatch):

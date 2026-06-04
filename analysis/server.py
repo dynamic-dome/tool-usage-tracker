@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
 from _load import (load_events, pair_events, pairing_summary, success_rate_by,
-                   duration_stats_by, path_activity)
+                   duration_stats_by, path_activity, classification_breakdown)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA = ROOT / "data" / "events.jsonl"
@@ -60,6 +60,7 @@ def spans_payload(data_path, params):
         "duration_by_tool": duration_stats_by(spans, "tool_name"),
         "path_activity": path_activity(spans),
         "pairing": pairing_summary(spans),
+        "classification": classification_breakdown(spans),
     }
 
 

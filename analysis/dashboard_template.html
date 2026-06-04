@@ -66,6 +66,8 @@ canvas{max-height:300px}
     <div class="card"><h2>Top-Tools</h2><canvas id="cTools"></canvas></div>
     <div class="card"><h2>Fehlerrate pro Tool</h2><canvas id="cErr"></canvas></div>
     <div class="card full"><h2>Aktivit&auml;t &uuml;ber Zeit</h2><canvas id="cDays"></canvas></div>
+    <div class="card"><h2>Risk-Verteilung</h2><canvas id="cRisk"></canvas></div>
+    <div class="card"><h2>App / Intent (mutating hervorgehoben)</h2><div class="tree" id="appTree"></div></div>
     <div class="card full"><h2>Pfad-Aktivit&auml;t &mdash; Treemap</h2>
       <div class="muted" id="tmHint" style="margin-bottom:8px">Klick auf eine Kachel filtert den Heat-Baum darunter.</div>
       <div class="treemap" id="treemap"></div>
@@ -142,6 +144,7 @@ function renderKPIs(data){
     ['Unpaired', pairing.unpaired != null ? pairing.unpaired : 0],
     ['Pairing-Rate', ((pairing.pairing_rate || 0) * 100).toFixed(1) + '%'],
     ['Erfolgsrate', rate.toFixed(1) + '%'],
+    ['Mutating Spans', (data.classification && data.classification.mutating_count != null) ? data.classification.mutating_count : 0],
     ['&#216; Dauer (alle)', avg + ' ms'],
     ['p95 Dauer (alle)', p95 + ' ms']
   ];
@@ -185,6 +188,63 @@ function renderDays(data){
                          borderColor: AC, backgroundColor: 'rgba(57,208,216,.15)', fill: true, tension: .3 }] },
     options: { plugins: { legend: { display: false } } }
   });
+}
+
+var RISK_ORDER = ['high', 'medium', 'low', 'unknown'];
+var RISK_COLOR = { high: '#f7768e', medium: '#e0af68', low: '#9ece6a', unknown: '#565f89' };
+
+function renderRisk(data){
+  var cls = data.classification || {};
+  var risk = cls.risk || {};
+  var labels = RISK_ORDER.filter(function(k){ return risk[k]; });
+  // unbekannte/zukuenftige risk-Stufen ans Ende anhaengen
+  Object.keys(risk).forEach(function(k){ if (labels.indexOf(k) < 0) labels.push(k); });
+  var vals = labels.map(function(k){ return risk[k]; });
+  var colors = labels.map(function(k){ return RISK_COLOR[k] || AC; });
+  destroyChart('risk');
+  if (!window.Chart) return;
+  charts.risk = new Chart($('cRisk'), {
+    type: 'doughnut',
+    data: { labels: labels, datasets: [{ data: vals, backgroundColor: colors }] },
+    options: { plugins: { legend: { position: 'right' } } }
+  });
+}
+
+function renderAppTree(data){
+  var cls = data.classification || {};
+  var byApp = cls.by_app || {};
+  var byIntent = cls.by_intent || {};
+  var el = $('appTree');
+  el.innerHTML = '';
+  var apps = Object.keys(byApp).sort(function(a, b){ return byApp[b] - byApp[a]; });
+  if (!apps.length && !Object.keys(byIntent).length) {
+    el.innerHTML = '<div class="muted">Keine Bash-Klassifizierung (app/intent) in den Daten.</div>';
+    return;
+  }
+  var maxApp = apps.reduce(function(m, k){ return Math.max(m, byApp[k]); }, 0);
+  apps.forEach(function(k){
+    var frac = maxApp ? byApp[k] / maxApp : 0;
+    var row = document.createElement('div');
+    row.className = 'node';
+    var badge = '<span class="badge" style="background:' + heatColor(frac) + '">' + byApp[k] + '</span>';
+    row.innerHTML = '<span>' + esc(k) + '</span>' + badge;
+    el.appendChild(row);
+  });
+  var intents = Object.keys(byIntent).sort(function(a, b){ return byIntent[b] - byIntent[a]; });
+  intents.forEach(function(k){
+    var row = document.createElement('div');
+    row.className = 'node';
+    row.style.paddingLeft = '18px';
+    var badge = '<span class="badge" style="background:' + AC2 + '">' + byIntent[k] + '</span>';
+    row.innerHTML = '<span class="muted">intent:</span> <span>' + esc(k) + '</span>' + badge;
+    el.appendChild(row);
+  });
+  var mut = cls.mutating_count != null ? cls.mutating_count : 0;
+  var foot = document.createElement('div');
+  foot.className = 'node';
+  foot.style.marginTop = '8px';
+  foot.innerHTML = '<span class="muted">mutating gesamt:</span> <span class="badge" style="background:' + RISK_COLOR.high + '">' + mut + '</span>';
+  el.appendChild(foot);
 }
 
 function renderErr(data){
@@ -317,6 +377,8 @@ function renderTimeline(data){
       labelParts.push(durTxt);
       var fullLabel = labelParts.join(' · ');
       var title = fullLabel;
+      if (s.risk && s.risk !== 'unknown') title += ' · risk:' + s.risk;
+      if (s.mutating) title += ' · mutating';
       if (s.error) title += ' · ' + s.error;
       if (s.cwd) title += ' · ' + s.cwd;
       rowHtml += '<div class="' + cls + '" style="' + style + '" title="' + esc(title) + '">' + esc(fullLabel) + '</div>';
@@ -347,6 +409,8 @@ function renderAll(data){
   renderTools(data);
   renderDays(data);
   renderErr(data);
+  renderRisk(data);
+  renderAppTree(data);
   renderTreemap(data);
   renderTree(data);
   renderTimeline(data);

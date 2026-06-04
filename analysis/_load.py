@@ -58,8 +58,21 @@ def _duration_ms(start_ts, end_ts):
         return None
 
 
-def _paired_span(pre, post, method):
+def _classification(ev):
+    """Bash-Klassifizierungsfelder aus einem Pre-Event mit definierten Defaults.
+    Nicht-Bash-Events/Altdaten ohne diese Felder bekommen leere/neutrale Werte
+    statt zu fehlen (verhindert KeyError im Auswerte-Pfad, vermeidet Schema-Drift)."""
     return {
+        "app": ev.get("app", ""),
+        "operation": ev.get("operation", ""),
+        "intent": ev.get("intent", ""),
+        "risk": ev.get("risk", "unknown"),
+        "mutating": bool(ev.get("mutating", False)),
+    }
+
+
+def _paired_span(pre, post, method):
+    span = {
         "tool_name": pre.get("tool_name"), "agent": pre.get("agent"),
         "session_id": pre.get("session_id"), "project": pre.get("project"),
         "summary": pre.get("summary"), "cwd": pre.get("cwd"),
@@ -70,10 +83,12 @@ def _paired_span(pre, post, method):
         "pairing_confidence": "exact" if method == "tool_use_id" else "fallback",
         "orphan_kind": "",
     }
+    span.update(_classification(pre))
+    return span
 
 
 def _orphan_post_span(ev):
-    return {
+    span = {
         "tool_name": ev.get("tool_name"), "agent": ev.get("agent"),
         "session_id": ev.get("session_id"), "project": None,
         "summary": None, "cwd": None,
@@ -82,10 +97,13 @@ def _orphan_post_span(ev):
         "paired": False, "pairing_method": "orphan",
         "pairing_confidence": "none", "orphan_kind": "post_without_pre",
     }
+    # Post-Events tragen keine Klassifizierung -> neutrale Defaults.
+    span.update(_classification(ev))
+    return span
 
 
 def _unpaired_pre_span(pre):
-    return {
+    span = {
         "tool_name": pre.get("tool_name"), "agent": pre.get("agent"),
         "session_id": pre.get("session_id"), "project": pre.get("project"),
         "summary": pre.get("summary"), "cwd": pre.get("cwd"),
@@ -94,6 +112,8 @@ def _unpaired_pre_span(pre):
         "pairing_method": "orphan", "pairing_confidence": "none",
         "orphan_kind": "pre_without_post",
     }
+    span.update(_classification(pre))
+    return span
 
 
 def pair_events(events):
@@ -207,3 +227,21 @@ def duration_stats_by(spans, key):
 def path_activity(spans):
     from collections import Counter
     return dict(Counter(s.get("cwd") for s in spans if s.get("cwd")))
+
+
+def classification_breakdown(spans):
+    """Aggregiert die Bash-Klassifizierung (app/intent/risk/mutating) ueber alle
+    Spans (gepaart wie ungepaart). Liefert Counts pro risk-Stufe, pro app, pro
+    intent und die Anzahl mutierender Aktionen — die Datengrundlage fuer die
+    Risk-Facette + Mutating-KPI im Dashboard (B-01)."""
+    from collections import Counter
+    risk = Counter(s.get("risk", "unknown") or "unknown" for s in spans)
+    by_app = Counter(a for s in spans if (a := s.get("app")))
+    by_intent = Counter(i for s in spans if (i := s.get("intent")))
+    mutating_count = sum(1 for s in spans if s.get("mutating"))
+    return {
+        "risk": dict(risk),
+        "by_app": dict(by_app),
+        "by_intent": dict(by_intent),
+        "mutating_count": mutating_count,
+    }

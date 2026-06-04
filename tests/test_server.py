@@ -157,6 +157,49 @@ def test_projects_dropdown_one_git_event_qualifies(tmp_path):
     assert payload["projects"] == ["mixed"]
 
 
+def test_spans_payload_exposes_classification_breakdown(tmp_path):
+    # B-01: app/intent/risk/mutating werden vom Hook geschrieben und muessen
+    # im Payload als Facette/Count fuer das Dashboard auswertbar sein.
+    p = _write(tmp_path, [
+        {"phase": "pre", "session_id": "s1", "tool_name": "Bash",
+         "tool_use_id": "id1", "ts_utc": "2026-06-02T10:00:00.000Z",
+         "project": "P", "cwd": "c", "summary": "git push", "agent": "claude-code",
+         "app": "git", "operation": "git push", "intent": "write",
+         "risk": "high", "mutating": True},
+        {"phase": "post", "session_id": "s1", "tool_name": "Bash",
+         "tool_use_id": "id1", "ts_utc": "2026-06-02T10:00:00.200Z",
+         "ok": True, "error": "", "agent": "claude-code"},
+        {"phase": "pre", "session_id": "s2", "tool_name": "Bash",
+         "tool_use_id": "id2", "ts_utc": "2026-06-02T10:01:00.000Z",
+         "project": "P", "cwd": "c", "summary": "pytest", "agent": "claude-code",
+         "app": "python", "operation": "pytest", "intent": "test",
+         "risk": "low", "mutating": False},
+        {"phase": "post", "session_id": "s2", "tool_name": "Bash",
+         "tool_use_id": "id2", "ts_utc": "2026-06-02T10:01:00.100Z",
+         "ok": True, "error": "", "agent": "claude-code"},
+    ])
+    payload = srv.spans_payload(str(p), {})
+    cls = payload["classification"]
+    assert cls["risk"]["high"] == 1
+    assert cls["risk"]["low"] == 1
+    assert cls["mutating_count"] == 1
+    assert cls["by_app"]["git"] == 1
+    assert cls["by_app"]["python"] == 1
+    assert cls["by_intent"]["write"] == 1
+    assert cls["by_intent"]["test"] == 1
+    # Spans selbst tragen die Felder (fuer Timeline-Tooltip/Filter)
+    span = next(s for s in payload["spans"] if s.get("app") == "git")
+    assert span["risk"] == "high"
+    assert span["mutating"] is True
+
+
+def test_live_dashboard_template_has_risk_facet():
+    # Das Template muss die neue Risk-Facette + Mutating-KPI rendern.
+    html = srv.index_html()
+    assert "Mutating" in html
+    assert "Risk" in html or "risk" in html
+
+
 def test_parse_query_flags():
     params = srv.parse_query("agent=codex&exclude_self=1&since=2026-06-01")
     assert params["agent"] == "codex"

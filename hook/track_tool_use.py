@@ -166,10 +166,14 @@ def classify_bash_command(command: str) -> dict:
 
 
 def derive_project(cwd) -> str:
+    # Plattformportabel: cwd kann ein Windows-Pfad (\) ODER ein POSIX-Pfad (/)
+    # sein. Path(...).name zerlegt Backslashes nur AUF Windows korrekt, daher
+    # hier explizit auf beiden Separatoren splitten — sonst liefert ein
+    # Windows-Pfad auf Linux-CI/Codex faelschlich den vollen String.
     if not cwd:
         return "unknown"
-    name = Path(str(cwd)).name
-    return name or "unknown"
+    parts = [p for p in re.split(r"[\\/]+", str(cwd)) if p]
+    return parts[-1] if parts else "unknown"
 
 
 def _events_path() -> Path:

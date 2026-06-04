@@ -174,3 +174,74 @@ def test_id_pairing_does_not_cross_sessions():
     spans = load.pair_events(evs)
     # Different sessions must NOT pair even with same id (id is only unique within a session/run)
     assert all(s["paired"] is False for s in spans)
+
+
+# --- B-01: Bash-Klassifizierungsfelder app/intent/risk/mutating ---
+# Diese Felder werden vom Hook ins Pre-Event geschrieben, aber bisher NICHT in
+# den Span uebernommen und nirgends ausgewertet. Die folgenden Tests sichern,
+# dass sie a) durch pair_events in den Span propagiert und b) aggregiert werden.
+
+
+def test_span_carries_classification_fields_from_pre():
+    evs = [
+        _pre("s1", "Bash", "2026-06-02T10:00:00.000Z",
+             app="git", operation="git push", intent="write",
+             risk="high", mutating=True),
+        _post("s1", "Bash", "2026-06-02T10:00:00.200Z"),
+    ]
+    spans = load.pair_events(evs)
+    s = spans[0]
+    assert s["app"] == "git"
+    assert s["operation"] == "git push"
+    assert s["intent"] == "write"
+    assert s["risk"] == "high"
+    assert s["mutating"] is True
+
+
+def test_span_defaults_classification_when_absent():
+    # Nicht-Bash-Events (oder Altdaten) haben keine Klassifizierung -> Defaults,
+    # nicht KeyError. risk default "unknown", mutating default False.
+    evs = [
+        _pre("s1", "Read", "2026-06-02T10:00:00.000Z"),
+        _post("s1", "Read", "2026-06-02T10:00:00.100Z"),
+    ]
+    s = load.pair_events(evs)[0]
+    assert s["app"] == ""
+    assert s["intent"] == ""
+    assert s["risk"] == "unknown"
+    assert s["mutating"] is False
+
+
+def test_orphan_pre_also_carries_classification():
+    # Ungepaartes Pre behaelt seine Klassifizierung (fuer die Risk-Facette zaehlbar).
+    evs = [_pre("s1", "Bash", "2026-06-02T10:00:00.000Z",
+                app="github", intent="write", risk="medium", mutating=True)]
+    s = load.pair_events(evs)[0]
+    assert s["paired"] is False
+    assert s["risk"] == "medium"
+    assert s["mutating"] is True
+
+
+def test_classification_breakdown_counts_risk_and_mutating():
+    spans = [
+        {"risk": "high", "mutating": True, "app": "git", "intent": "write"},
+        {"risk": "high", "mutating": True, "app": "github", "intent": "write"},
+        {"risk": "low", "mutating": False, "app": "python", "intent": "test"},
+        {"risk": "unknown", "mutating": False, "app": "", "intent": ""},
+    ]
+    bd = load.classification_breakdown(spans)
+    assert bd["risk"]["high"] == 2
+    assert bd["risk"]["low"] == 1
+    assert bd["risk"]["unknown"] == 1
+    assert bd["mutating_count"] == 2
+    assert bd["by_app"]["git"] == 1
+    assert bd["by_app"]["github"] == 1
+    assert bd["by_intent"]["write"] == 2
+
+
+def test_classification_breakdown_ignores_empty_app():
+    # Leere app-Werte (Nicht-Bash) duerfen die App-Facette nicht mit "" verschmutzen.
+    spans = [{"risk": "unknown", "mutating": False, "app": "", "intent": ""}]
+    bd = load.classification_breakdown(spans)
+    assert "" not in bd["by_app"]
+    assert bd["mutating_count"] == 0
