@@ -42,6 +42,12 @@ canvas{max-height:300px}
 .tl-bar{height:26px;border-radius:5px;padding:0 7px;display:flex;align-items:center;overflow:hidden;white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:11px;color:#0a0e14;cursor:default}
 .tl-bar.fail{color:#0a0e14}
 .tl-bar.open{background:transparent!important;border:1px dashed var(--accent);color:var(--accent)}
+.tl-turn{margin:0 0 10px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:rgba(255,255,255,.02)}
+.tl-turn-head{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--fg);opacity:.7;margin-bottom:6px}
+.tl-turn-head .idx{color:var(--accent);opacity:1}
+.tl-track{position:relative;width:100%}
+.tl-track .tl-bar{position:absolute;top:0;min-width:2px}
+.tl-lane{position:relative;height:26px;margin-bottom:3px}
 </style></head><body>
 <header>
   <h1>&#9646; TOOL-USAGE COMMAND CENTER</h1>
@@ -392,64 +398,71 @@ function renderTimeline(data){
   var tl = $('timeline');
   tl.innerHTML = '';
   if (!spans.length) { tl.innerHTML = '<div class="muted">Keine Spans.</div>'; return; }
-  // Max-Dauer im View für relative Skalierung
-  var maxDur = 0;
-  spans.forEach(function(s){
-    if (s.duration_ms !== null && s.duration_ms !== undefined && s.duration_ms > maxDur) maxDur = s.duration_ms;
-  });
-  if (maxDur <= 0) maxDur = 1;
-  var MINW = 60, MAXW = 360;
-  // Gruppieren nach session_id
-  var groups = {};   // sid -> {sid, project, spans:[]}
-  var order = [];
-  spans.forEach(function(s){
-    var sid = s.session_id || '?';
-    if (!groups[sid]) { groups[sid] = { sid: sid, project: s.project || '', spans: [] }; order.push(sid); }
-    groups[sid].spans.push(s);
-  });
-  order.forEach(function(sid){
-    var g = groups[sid];
-    // Chronologisch; Spans ohne ts_start ans Ende
-    g.spans.sort(function(a, b){
-      var ta = a.ts_start || '', tb = b.ts_start || '';
-      if (!ta && !tb) return 0;
-      if (!ta) return 1;
-      if (!tb) return -1;
-      return ta < tb ? -1 : (ta > tb ? 1 : 0);
+  try {
+    // Gruppieren nach session_id (Reihenfolge des ersten Auftretens)
+    var groups = {}; var order = [];
+    spans.forEach(function(s){
+      var sid = s.session_id || '?';
+      if (!groups[sid]) { groups[sid] = { sid: sid, project: s.project || '', spans: [] }; order.push(sid); }
+      groups[sid].spans.push(s);
     });
-    var shortSid = String(sid).length > 12 ? String(sid).slice(0, 8) + '…' : String(sid);
-    var sec = document.createElement('div');
-    sec.className = 'tl-session';
-    var head = '<h3>' + esc(shortSid);
-    if (g.project) head += '<span class="proj">' + esc(g.project) + '</span>';
-    head += '</h3>';
-    var rowHtml = '<div class="tl-row">';
-    g.spans.forEach(function(s){
-      var dur = (s.duration_ms !== null && s.duration_ms !== undefined) ? s.duration_ms : null;
-      var w = dur !== null ? Math.round(MINW + (Math.min(dur, maxDur) / maxDur) * (MAXW - MINW)) : MINW;
-      var cls = 'tl-bar';
-      var style = 'width:' + w + 'px;';
-      if (s.ok === true) { cls += ' ok'; style += 'background:' + AC + ';'; }
-      else if (s.ok === false) { cls += ' fail'; style += 'background:' + AC2 + ';'; }
-      else { cls += ' open'; }
-      var tool = s.tool_name || '?';
-      var summ = s.summary || '';
-      var durTxt = dur !== null ? dur + 'ms' : 'offen';
-      var labelParts = [tool];
-      if (summ) labelParts.push(summ);
-      labelParts.push(durTxt);
-      var fullLabel = labelParts.join(' · ');
-      var title = fullLabel;
-      if (s.risk && s.risk !== 'unknown') title += ' · risk:' + s.risk;
-      if (s.mutating) title += ' · mutating';
-      if (s.error) title += ' · ' + s.error;
-      if (s.cwd) title += ' · ' + s.cwd;
-      rowHtml += '<div class="' + cls + '" style="' + style + '" title="' + esc(title) + '">' + esc(fullLabel) + '</div>';
+    var gapTxt = data.turn_gap_ms ? (Math.round(data.turn_gap_ms / 1000) + 's') : '–';
+    order.forEach(function(sid){
+      var g = groups[sid];
+      var shortSid = String(sid).length > 12 ? String(sid).slice(0, 8) + '…' : String(sid);
+      var sec = document.createElement('div');
+      sec.className = 'tl-session';
+      var head = '<h3>' + esc(shortSid);
+      if (g.project) head += '<span class="proj">' + esc(g.project) + '</span>';
+      head += '<span class="proj">turn-gap ' + esc(gapTxt) + '</span></h3>';
+      // In Turns aufteilen (turn_index kommt vom Server)
+      var turns = {}; var turnOrder = [];
+      g.spans.forEach(function(s){
+        var ti = (s.turn_index != null) ? s.turn_index : 0;
+        if (!turns[ti]) { turns[ti] = []; turnOrder.push(ti); }
+        turns[ti].push(s);
+      });
+      turnOrder.sort(function(a, b){ return a - b; });
+      var body = '';
+      turnOrder.forEach(function(ti){
+        var layout = turnLayout(turns[ti]);
+        var laneCount = layout.reduce(function(m, it){ return Math.max(m, it.lane + 1); }, 1);
+        var durs = turns[ti].map(function(s){ return s.duration_ms || 0; });
+        var sumDur = durs.reduce(function(a, b){ return a + b; }, 0);
+        body += '<div class="tl-turn"><div class="tl-turn-head"><span class="idx">Turn ' + ti + '</span>'
+              + ' · ' + turns[ti].length + ' Spans · Σ' + sumDur + 'ms</div>';
+        body += '<div class="tl-track" style="height:' + (laneCount * 29) + 'px">';
+        layout.forEach(function(it){
+          var s = it.span;
+          var cls = 'tl-bar';
+          var style = 'left:' + it.left.toFixed(2) + '%;width:' + it.width.toFixed(2) + '%;top:' + (it.lane * 29) + 'px;';
+          if (!it.dated) { cls += ' open'; }
+          else if (s.ok === true) { cls += ' ok'; style += 'background:' + AC + ';'; }
+          else if (s.ok === false) { cls += ' fail'; style += 'background:' + AC2 + ';'; }
+          else { cls += ' open'; }
+          var tool = s.tool_name || '?';
+          var summ = s.summary || '';
+          var dur = (s.duration_ms != null) ? s.duration_ms : null;
+          var durTxt = dur !== null ? dur + 'ms' : 'offen';
+          var label = [tool]; if (summ) label.push(summ); label.push(durTxt);
+          var fullLabel = label.join(' · ');
+          var title = fullLabel;
+          if (s.risk && s.risk !== 'unknown') title += ' · risk:' + s.risk;
+          if (s.mutating) title += ' · mutating';
+          if (s.git_branch) title += ' · ' + s.git_branch;
+          if (s.file_ext) title += ' · .' + s.file_ext;
+          if (s.error) title += ' · ' + s.error;
+          if (s.cwd) title += ' · ' + s.cwd;
+          body += '<div class="' + cls + '" style="' + style + '" title="' + esc(title) + '">' + esc(fullLabel) + '</div>';
+        });
+        body += '</div></div>';
+      });
+      sec.innerHTML = head + body;
+      tl.appendChild(sec);
     });
-    rowHtml += '</div>';
-    sec.innerHTML = head + rowHtml;
-    tl.appendChild(sec);
-  });
+  } catch (e) {
+    tl.innerHTML = '<div class="muted">Timeline-Render-Fehler: ' + esc(e && e.message ? e.message : e) + '</div>';
+  }
 }
 
 function fillOptions(listId, values){
