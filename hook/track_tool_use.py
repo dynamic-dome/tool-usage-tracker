@@ -26,8 +26,13 @@ _SECRET_PATTERNS = [
     re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"),
     # Google API-Key (AIza + 35 Zeichen)
     re.compile(r"AIza[0-9A-Za-z_-]{35}"),
-    # Stripe Secret/Restricted Live-Keys
-    re.compile(r"[sr]k_live_[0-9A-Za-z]{10,}"),
+    # Stripe Secret/Restricted Keys (Live UND Test — beide sind geheim)
+    re.compile(r"[sr]k_(?:live|test)_[0-9A-Za-z]{10,}"),
+    # GitLab Personal Access Token
+    re.compile(r"glpat-[0-9A-Za-z_-]{20,}"),
+    # Google OAuth2 Access Token (ya29. + Base64url) — auf 'ya29.' verankert,
+    # damit 'ya29' als Teilwort in Dateinamen o.ä. nicht getroffen wird.
+    re.compile(r"ya29\.[0-9A-Za-z_-]{20,}"),
     # JWT (drei base64url-Segmente, vom typischen eyJ-Header eingeleitet)
     re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),
     # Generische key=value-Zuweisungen (NACH den spezifischen Formaten)

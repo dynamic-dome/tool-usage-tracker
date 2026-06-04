@@ -164,6 +164,41 @@ def test_redact_generic_long_hex_after_keyword():
     assert "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" not in s
 
 
+def test_redact_stripe_test_key():
+    # Stripe Test-Keys (sk_test_/rk_test_) sind ebenso geheim wie Live-Keys —
+    # leak'en App-Zugriff auf Stripe-Testdaten. Ground-Truth-Luecke S-01.
+    for raw in ("sk_test_0123456789abcdefABCDEFghij",
+                "rk_test_0123456789abcdefABCDEFghij"):
+        s = track.redact("STRIPE=" + raw + " rest")
+        assert "‹redacted›" in s
+        assert raw[:18] not in s
+
+
+def test_redact_gitlab_pat():
+    # GitLab Personal Access Tokens: glpat-<20+ Zeichen>. Nackt (ohne key=value-
+    # Kontext) testen, damit das Token-FORMAT greift, nicht die =-Heuristik.
+    raw = "glpat-abcdEFGH1234567890_xyz"
+    s = track.redact("push failed using " + raw + " now")
+    assert "‹redacted›" in s
+    assert "glpat-abcdEFGH" not in s
+
+
+def test_redact_google_oauth_access_token():
+    # Google OAuth2 Access Tokens beginnen mit 'ya29.' gefolgt von Base64url.
+    # Nackt testen (kein =), damit das Token-Format selbst greifen muss.
+    raw = "ya29.A0AfH6SMBxyz1234567890abcdefghIJKLMNOP"
+    s = track.redact("request with " + raw + " header")
+    assert "‹redacted›" in s
+    assert "ya29.A0AfH6" not in s
+
+
+def test_redact_does_not_eat_filename_with_ya29_substring():
+    # Negativtest: 'ya29' als Teilwort ohne den Punkt-Separator (kein Token-Format)
+    # darf NICHT redaktiert werden — Pattern muss auf 'ya29.' verankert sein.
+    benign = "open file analysis_ya29_results.csv now"
+    assert track.redact(benign) == benign
+
+
 def test_redact_does_not_eat_benign_hex_without_keyword():
     # Ein langer Hex-String OHNE secret/key/token-Kontext (z. B. ein Commit-Hash
     # in Prosa) darf NICHT redaktiert werden — sonst werden git-Logs unbrauchbar.
