@@ -11,7 +11,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
 from _load import (load_events, pair_events, pairing_summary, success_rate_by,
-                   duration_stats_by, path_activity, classification_breakdown)
+                   duration_stats_by, path_activity, classification_breakdown,
+                   compute_turn_gap_threshold, assign_turns)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA = ROOT / "data" / "events.jsonl"
@@ -46,6 +47,8 @@ def spans_payload(data_path, params):
                       since=params.get("since"),
                       exclude_self=params.get("exclude_self") in ("1", "true", "True"))
     spans = pair_events(evs)
+    turn_gap_ms = compute_turn_gap_threshold(spans)
+    assign_turns(spans, turn_gap_ms)
     # Auswahl-Optionen aus ALLEN Events (ungefiltert) — sonst könnte man von
     # einem aktiven Filter nie auf einen anderen Wert umschalten.
     all_evs = load_events(data_path)
@@ -53,6 +56,7 @@ def spans_payload(data_path, params):
         "count": len([s for s in spans if s.get("paired")]),
         "total_events": len(evs),
         "spans": spans,
+        "turn_gap_ms": turn_gap_ms,
         "agents": _distinct_sorted(all_evs, "agent"),
         "projects": _git_projects_sorted(all_evs),
         "success_by_tool": success_rate_by(spans, "tool_name"),

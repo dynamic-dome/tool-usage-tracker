@@ -266,3 +266,21 @@ def test_favicon_request_returns_no_content():
     h = FakeHandler()
     h.do_GET()
     assert captured["code"] == 204
+
+
+def test_spans_payload_assigns_turn_index_and_threshold(tmp_path):
+    # Zwei Spans derselben Session mit kleinem Gap -> beide turn_index 0,
+    # turn_gap_ms im Payload vorhanden.
+    import json as _json
+    ev = tmp_path / "ev.jsonl"
+    rows = [
+        {"phase": "pre", "session_id": "s", "tool_use_id": "t1",
+         "tool_name": "Read", "ts_utc": "2026-06-04T10:00:00.000Z",
+         "cwd": "x", "project": "p"},
+        {"phase": "post", "session_id": "s", "tool_use_id": "t1",
+         "tool_name": "Read", "ts_utc": "2026-06-04T10:00:00.100Z", "ok": True},
+    ]
+    ev.write_text("\n".join(_json.dumps(r) for r in rows), encoding="utf-8")
+    payload = srv.spans_payload(str(ev), {})
+    assert "turn_gap_ms" in payload
+    assert all("turn_index" in s for s in payload["spans"] if s.get("ts_start"))
