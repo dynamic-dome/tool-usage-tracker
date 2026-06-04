@@ -66,7 +66,7 @@ canvas{max-height:300px}
     <div class="card"><h2>Top-Tools</h2><canvas id="cTools"></canvas></div>
     <div class="card"><h2>Fehlerrate pro Tool</h2><canvas id="cErr"></canvas></div>
     <div class="card full"><h2>Aktivit&auml;t &uuml;ber Zeit</h2><canvas id="cDays"></canvas></div>
-    <div class="card"><h2>Risk-Verteilung</h2><canvas id="cRisk"></canvas></div>
+    <div class="card"><h2>Risk-Verteilung</h2><canvas id="cRisk"></canvas><div class="muted" id="riskNote" style="margin-top:8px;font-size:12px"></div></div>
     <div class="card"><h2>App / Intent (mutating hervorgehoben)</h2><div class="tree" id="appTree"></div></div>
     <div class="card full"><h2>Pfad-Aktivit&auml;t &mdash; Treemap</h2>
       <div class="muted" id="tmHint" style="margin-bottom:8px">Klick auf eine Kachel filtert den Heat-Baum darunter.</div>
@@ -190,22 +190,41 @@ function renderDays(data){
   });
 }
 
-var RISK_ORDER = ['high', 'medium', 'low', 'unknown'];
+var RISK_ORDER = ['high', 'medium', 'low'];
 var RISK_COLOR = { high: '#f7768e', medium: '#e0af68', low: '#9ece6a', unknown: '#565f89' };
+
+// Reine, DOM-/Chart-freie Aufbereitung der Doughnut-Daten — isoliert in Node
+// testbar. 'unknown' (Nicht-Bash-Tools/Altdaten) wird bewusst AUSGEBLENDET,
+// damit die sicherheitsrelevanten Stufen high/medium nicht von der unknown-
+// Masse erdrueckt werden; ihre Anzahl wird als `hidden` fuer die Fussnote
+// zurueckgegeben. Bekannte Stufen in fixer Reihenfolge high>medium>low,
+// danach evtl. neue/zukuenftige Stufen (ausser unknown) angehaengt.
+function riskChartData(risk){
+  risk = risk || {};
+  var labels = RISK_ORDER.filter(function(k){ return risk[k]; });
+  Object.keys(risk).forEach(function(k){
+    if (k !== 'unknown' && labels.indexOf(k) < 0) labels.push(k);
+  });
+  var values = labels.map(function(k){ return risk[k]; });
+  var hidden = risk.unknown || 0;
+  return { labels: labels, values: values, hidden: hidden };
+}
 
 function renderRisk(data){
   var cls = data.classification || {};
-  var risk = cls.risk || {};
-  var labels = RISK_ORDER.filter(function(k){ return risk[k]; });
-  // unbekannte/zukuenftige risk-Stufen ans Ende anhaengen
-  Object.keys(risk).forEach(function(k){ if (labels.indexOf(k) < 0) labels.push(k); });
-  var vals = labels.map(function(k){ return risk[k]; });
-  var colors = labels.map(function(k){ return RISK_COLOR[k] || AC; });
+  var d = riskChartData(cls.risk || {});
+  var colors = d.labels.map(function(k){ return RISK_COLOR[k] || AC; });
+  var note = $('riskNote');
+  if (note) {
+    note.textContent = d.hidden
+      ? (d.hidden.toLocaleString() + ' Spans ohne Klassifizierung (ausgeblendet)')
+      : '';
+  }
   destroyChart('risk');
   if (!window.Chart) return;
   charts.risk = new Chart($('cRisk'), {
     type: 'doughnut',
-    data: { labels: labels, datasets: [{ data: vals, backgroundColor: colors }] },
+    data: { labels: d.labels, datasets: [{ data: d.values, backgroundColor: colors }] },
     options: { plugins: { legend: { position: 'right' } } }
   });
 }
