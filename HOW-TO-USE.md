@@ -23,8 +23,10 @@ Siehe `install.md`.
 `python analysis/server.py` starten, dann im Browser `http://127.0.0.1:8770` öffnen
 (127.0.0.1, **nicht** localhost — Regel 16). Stdlib-`http.server`, an 127.0.0.1 gebunden.
 - Zwei Tabs: **Analytics** (Default; Top-Tools, Fehlerrate, Aktivität/Zeit, Pfad-Treemap +
-  Heat-Baum) und **Timeline** (Span-Flow pro Session, Balkenbreite ∝ Dauer, gestrichelt =
-  ungepaart).
+  Heat-Baum) und **Timeline** (Waterfall): Spans pro Session in **Turns** gruppiert
+  (Pause-Heuristik, adaptiver Schwellwert im Kopf angezeigt). Jeder Turn hat eine eigene
+  Zeitachse: x-Position = Offset ab Turn-Start, Breite ∝ Dauer; gleichzeitige Spans
+  gestapelt; gestrichelt = ungepaart.
 - **Refresh** ist manuell (Button) — kein Auto-Polling.
 - Filter im Header: `agent`, `project`, `since` (YYYY-MM-DD) und Checkbox `exclude_self`
   (blendet die eigenen Tracker-/Report-Aufrufe aus). Ctrl-C im Terminal stoppt den Server.

@@ -3,6 +3,7 @@
 - Sanitisierung: 120-Zeichen-Limit, Secret-Redaction, Pfad-Kürzung, kein Datei-Inhalt.
 - Pairing: `analysis/_load.py` verschmilzt Pre/Post zu Spans mit `duration_ms`, Erfolg und Fehlertext; exakter Match per `tool_use_id`, FIFO-Fallback fuer Altdaten.
 - Auswertung: CLI-Report, statisches HTML-Dashboard und Live-Dashboard (`analysis/server.py`) mit Analytics-/Timeline-Ansicht, Filtern und manueller Refresh-Steuerung.
+- Timeline/Waterfall: der Timeline-Tab gruppiert Spans pro Session in Turns (global-adaptive Gap-Heuristik, median+3*MAD, Klammer 5-120s, Fallback 30s) und stellt sie pro Turn auf einer echten Zeitachse dar (x=Offset ab Turn-Start, Breite=Dauer); gleichzeitige Spans werden vertikal gestapelt.
 - Bash-Klassifizierung: `PreToolUse`-Events fuer `Bash` bekommen optionale Felder `app`, `operation`, `intent`, `risk`, `mutating` fuer bekannte CLI-Familien (`git`, `gh`, `wrangler`, `notebooklm`, Python-/Node-Tools).
 - Kontext-Felder (A-5): in einem Git-Repo wird `git_branch` aus `.git/HEAD` ergaenzt (reiner Dateiread, kein subprocess; Detached HEAD -> 7-Zeichen-Hash). Datei-Tools (`Read`/`Write`/`Edit`/`NotebookEdit`) bekommen `file_ext` (Endung, lowercase).
 - Codex: projektlokale `.codex/hooks.json` vorhanden; Payload-Erkennung ueber `model` schreibt `agent:"codex"`. Live-Discovery in `codex exec` ist noch nicht voll bestaetigt.
