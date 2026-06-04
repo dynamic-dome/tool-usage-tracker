@@ -71,6 +71,44 @@ def _ts_to_ms(ts):
         return None
 
 
+def _intra_session_gaps(spans):
+    """Alle Inter-Span-Gaps (ms) innerhalb je einer Session. Ein Gap ist die
+    Pause zwischen ts_end eines Spans und ts_start des chronologisch naechsten
+    DERSELBEN Session. Nur Spans mit gueltigem ts_start; negative Gaps (Ueber-
+    lappung) werden auf 0 geklammert."""
+    from collections import defaultdict
+    by_sid = defaultdict(list)
+    for s in spans:
+        start = _ts_to_ms(s.get("ts_start"))
+        if start is None:
+            continue
+        end = _ts_to_ms(s.get("ts_end"))
+        by_sid[s.get("session_id")].append((start, end if end is not None else start))
+    gaps = []
+    for items in by_sid.values():
+        items.sort(key=lambda t: t[0])
+        for (s_prev, e_prev), (s_next, _e) in zip(items, items[1:]):
+            gaps.append(max(0.0, s_next - e_prev))
+    return gaps
+
+
+def compute_turn_gap_threshold(spans):
+    """Global-adaptive Turn-Gap-Schwelle (ms) ueber den ganzen View. Schwelle =
+    median + 3*MAD aller Intra-Session-Gaps, hart geklammert auf [5000, 120000].
+    Fallback 30000, wenn < 8 Gaps (zu wenig Daten fuer stabile Schaetzung).
+    Deterministisch."""
+    gaps = _intra_session_gaps(spans)
+    if len(gaps) < 8:
+        return 30000
+    gaps.sort()
+    n = len(gaps)
+    median = gaps[n // 2] if n % 2 else (gaps[n // 2 - 1] + gaps[n // 2]) / 2.0
+    devs = sorted(abs(g - median) for g in gaps)
+    mad = devs[n // 2] if n % 2 else (devs[n // 2 - 1] + devs[n // 2]) / 2.0
+    threshold = median + 3.0 * mad
+    return int(max(5000, min(120000, threshold)))
+
+
 def _classification(ev):
     """Bash-Klassifizierungsfelder aus einem Pre-Event mit definierten Defaults.
     Nicht-Bash-Events/Altdaten ohne diese Felder bekommen leere/neutrale Werte
