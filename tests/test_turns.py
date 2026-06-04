@@ -93,17 +93,18 @@ def test_assign_turns_independent_per_session():
     by_sid = {}
     for s in out:
         by_sid.setdefault(s["session_id"], []).append(s["turn_index"])
-    assert by_sid["a"] == [0, 1]
+    assert sorted(by_sid["a"]) == [0, 1]
     assert by_sid["b"] == [0]
 
 
 def test_assign_turns_orphans_without_ts_start_go_last():
-    spans = [_span("a", 0, 100),
+    # Zwei echte Turns (60s-Luecke -> Turn 0 und Turn 1); der Orphan muss im
+    # LETZTEN Turn (1) landen, nicht in Turn 0.
+    spans = [_span("a", 0, 100), _span("a", 60300, 100),
              {"session_id": "a", "ts_start": None, "ts_end": None, "duration_ms": None}]
     out = load.assign_turns(spans, threshold=30000)
     orphan = [s for s in out if s.get("ts_start") is None][0]
-    real = [s for s in out if s.get("ts_start") is not None][0]
-    assert orphan["turn_index"] == real["turn_index"]
+    assert orphan["turn_index"] == 1
 
 
 def test_assign_turns_robust_to_unsorted_input():
@@ -113,7 +114,8 @@ def test_assign_turns_robust_to_unsorted_input():
 
 
 def test_assign_turns_is_deterministic():
-    spans = [_span("a", 0, 100), _span("a", 60300, 100)]
-    a = [s["turn_index"] for s in load.assign_turns(spans, 30000)]
-    b = [s["turn_index"] for s in load.assign_turns(spans, 30000)]
-    assert a == b
+    def fresh():
+        return [_span("a", 0, 100), _span("a", 60300, 100)]
+    a = [s["turn_index"] for s in load.assign_turns(fresh(), 30000)]
+    b = [s["turn_index"] for s in load.assign_turns(fresh(), 30000)]
+    assert a == b == [0, 1]
