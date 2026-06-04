@@ -140,6 +140,37 @@ def test_redact_github_gho_and_pat():
     assert "github_pat_11ABCDE" not in s2
 
 
+def test_redact_google_api_key():
+    s = track.redact("GOOGLE_API_KEY=AIzaSyA1234567890abcdefGHIJKLMNOPQRSTUV rest")
+    assert "‹redacted›" in s
+    assert "AIzaSyA1234567890" not in s
+
+
+def test_redact_stripe_live_secret_key():
+    s = track.redact("STRIPE=sk_live_0123456789abcdefABCDEFghij rest")
+    assert "‹redacted›" in s
+    assert "sk_live_0123456789" not in s
+
+
+def test_redact_stripe_restricted_key():
+    s = track.redact("rk_live_0123456789abcdefABCDEFghij")
+    assert "‹redacted›" in s
+    assert "rk_live_0123456789" not in s
+
+
+def test_redact_generic_long_hex_after_keyword():
+    s = track.redact("secret a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6")
+    assert "‹redacted›" in s
+    assert "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" not in s
+
+
+def test_redact_does_not_eat_benign_hex_without_keyword():
+    # Ein langer Hex-String OHNE secret/key/token-Kontext (z. B. ein Commit-Hash
+    # in Prosa) darf NICHT redaktiert werden — sonst werden git-Logs unbrauchbar.
+    s = track.redact("commit a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6 fixed it")
+    assert "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" in s
+
+
 def test_redact_does_not_eat_benign_text():
     # Kein Secret-Format -> bleibt unangetastet
     benign = "git commit -m 'fix the parser bug in module x'"
@@ -284,13 +315,63 @@ def test_build_event_classifies_python_test_command():
     assert ev["mutating"] is False
 
 
-def test_build_event_does_not_add_cli_classification_to_non_bash():
+def test_build_event_does_not_add_classification_to_plain_non_bash():
+    # Read/Edit/Write u. a. Builtin-Tools (nicht Bash, nicht MCP) bekommen
+    # weiterhin KEINE app/intent/risk/mutating-Klassifizierung.
     ev = track.build_event({"session_id": "s", "cwd": r"C:\proj\Demo",
                             "tool_name": "Read",
                             "tool_input": {"file_path": r"C:\proj\Demo\a.py"},
                             "hook_event_name": "PreToolUse"})
     assert "app" not in ev
     assert "operation" not in ev
+
+
+def test_classify_mcp_write_tool():
+    c = track.classify_mcp_tool("mcp__wiki__wiki_write")
+    assert c["app"] == "mcp"
+    assert c["operation"] == "wiki/wiki_write"
+    assert c["intent"] == "write"
+    assert c["mutating"] is True
+
+
+def test_classify_mcp_read_tool():
+    c = track.classify_mcp_tool("mcp__wiki__wiki_search")
+    assert c["app"] == "mcp"
+    assert c["operation"] == "wiki/wiki_search"
+    assert c["intent"] == "read"
+    assert c["mutating"] is False
+
+
+def test_classify_mcp_playwright_navigate_is_mutating():
+    c = track.classify_mcp_tool("mcp__playwright__browser_navigate")
+    assert c["app"] == "mcp"
+    assert c["operation"] == "playwright/browser_navigate"
+    assert c["mutating"] is True
+
+
+def test_classify_mcp_playwright_snapshot_is_read():
+    c = track.classify_mcp_tool("mcp__playwright__browser_snapshot")
+    assert c["intent"] == "read"
+    assert c["mutating"] is False
+
+
+def test_classify_mcp_unknown_tool_defaults_safe():
+    c = track.classify_mcp_tool("mcp__somesrv__mystery_call")
+    assert c["app"] == "mcp"
+    assert c["operation"] == "somesrv/mystery_call"
+    assert c["intent"] == "unknown"
+    assert c["risk"] in ("low", "medium", "unknown")
+    assert c["mutating"] is False
+
+
+def test_build_event_classifies_mcp_tool():
+    ev = track.build_event({"session_id": "s", "cwd": r"C:\proj\Demo",
+                            "tool_name": "mcp__wiki__wiki_append_section",
+                            "tool_input": {"path": "x.md"},
+                            "hook_event_name": "PreToolUse"})
+    assert ev["app"] == "mcp"
+    assert ev["operation"] == "wiki/wiki_append_section"
+    assert ev["mutating"] is True
 
 
 def test_bash_classification_does_not_leak_secret_arguments():

@@ -24,11 +24,18 @@ _SECRET_PATTERNS = [
     re.compile(r"(?:AKIA|ASIA)[0-9A-Z]{16}"),
     # Slack Tokens
     re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"),
+    # Google API-Key (AIza + 35 Zeichen)
+    re.compile(r"AIza[0-9A-Za-z_-]{35}"),
+    # Stripe Secret/Restricted Live-Keys
+    re.compile(r"[sr]k_live_[0-9A-Za-z]{10,}"),
     # JWT (drei base64url-Segmente, vom typischen eyJ-Header eingeleitet)
     re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),
     # Generische key=value-Zuweisungen (NACH den spezifischen Formaten)
     re.compile(r"(?i)(api[_-]?key|token|password|secret|auth)\s*[=:]\s*(\"[^\"]*\"|'[^']*'|\S+)"),
     re.compile(r"(?i)bearer\s+\S+"),
+    # Generisches Hochentropie-Hex (>=32) NUR mit secret/key/token-Kontext davor —
+    # ohne Keyword wuerde dies git-Commit-Hashes in Prosa zerstoeren (bewusst eng).
+    re.compile(r"(?i)(secret|key|token|hash)\w*\s+[0-9a-f]{32,}"),
 ]
 
 
@@ -165,6 +172,38 @@ def classify_bash_command(command: str) -> dict:
             "risk": "low", "mutating": False}
 
 
+def classify_mcp_tool(tool_name: str) -> dict:
+    """Klassifiziert MCP-Tool-Calls (`mcp__<server>__<tool>`) analog zur
+    Bash-Klassifizierung. MCP-Calls kommen als eigene Tool-Namen (nicht als
+    Bash), waren bisher ein blinder Fleck im Tracker (Dossier A-3).
+
+    Read vs. mutating wird aus dem Tool-Namen-Suffix heuristisch bestimmt:
+    bekannte write-/navigations-Verben -> mutating, bekannte read-Verben ->
+    read, alles andere -> unknown/nicht-mutierend (fail-safe, keine
+    Over-Klassifizierung)."""
+    parts = tool_name.split("__", 2)
+    server = parts[1] if len(parts) > 2 else ""
+    tool = parts[2] if len(parts) > 2 else (parts[1] if len(parts) > 1 else "")
+    op = f"{server}/{tool}" if server else tool
+
+    name = tool.lower()
+    WRITE = ("write", "append", "create", "add", "delete", "update", "edit",
+             "log_", "navigate", "click", "type", "fill", "drag", "drop",
+             "press", "upload", "save", "resize", "select")
+    READ = ("read", "search", "find", "list", "get", "query", "status",
+            "snapshot", "screenshot", "console", "messages", "view")
+
+    if any(w in name for w in WRITE):
+        intent, mutating, risk = "write", True, "medium"
+    elif any(w in name for w in READ):
+        intent, mutating, risk = "read", False, "low"
+    else:
+        intent, mutating, risk = "unknown", False, "low"
+
+    return {"app": "mcp", "operation": op, "intent": intent,
+            "risk": risk, "mutating": mutating}
+
+
 def derive_project(cwd) -> str:
     # Plattformportabel: cwd kann ein Windows-Pfad (\) ODER ein POSIX-Pfad (/)
     # sein. Path(...).name zerlegt Backslashes nur AUF Windows korrekt, daher
@@ -227,6 +266,8 @@ def build_event(raw: dict) -> dict:
     }
     if tool_name == "Bash":
         ev.update(classify_bash_command(str(tool_input.get("command", ""))))
+    elif tool_name.startswith("mcp__"):
+        ev.update(classify_mcp_tool(tool_name))
     return ev
 
 
