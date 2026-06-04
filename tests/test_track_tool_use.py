@@ -406,6 +406,88 @@ def test_build_event_missing_fields_no_crash():
     assert ev["summary"] == ""
 
 
+# ---- A-5: git_branch (aus .git/HEAD, kein subprocess) + file_ext ----
+
+def test_git_branch_reads_ref_from_head(tmp_path):
+    # Normaler Repo-Zustand: .git/HEAD enthaelt "ref: refs/heads/<branch>"
+    git = tmp_path / ".git"
+    git.mkdir()
+    (git / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    assert track._git_branch(str(tmp_path)) == "main"
+
+
+def test_git_branch_handles_nested_branch_name(tmp_path):
+    git = tmp_path / ".git"
+    git.mkdir()
+    (git / "HEAD").write_text("ref: refs/heads/feature/a-5-git-branch\n", encoding="utf-8")
+    assert track._git_branch(str(tmp_path)) == "feature/a-5-git-branch"
+
+
+def test_git_branch_detached_head_returns_short_hash(tmp_path):
+    # Detached HEAD: .git/HEAD enthaelt direkt einen 40-Zeichen-Hash
+    git = tmp_path / ".git"
+    git.mkdir()
+    (git / "HEAD").write_text("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0\n", encoding="utf-8")
+    assert track._git_branch(str(tmp_path)) == "a1b2c3d"  # gekuerzt auf 7
+
+
+def test_git_branch_returns_none_without_git(tmp_path):
+    # Kein .git -> None (fail-safe, kein Crash)
+    assert track._git_branch(str(tmp_path)) is None
+
+
+def test_git_branch_returns_none_on_empty_cwd():
+    assert track._git_branch("") is None
+    assert track._git_branch(None) is None
+
+
+def test_file_ext_from_python_file():
+    assert track._file_ext(r"C:\proj\Demo\module.py") == "py"
+
+
+def test_file_ext_lowercased():
+    assert track._file_ext("/home/x/README.MD") == "md"
+
+
+def test_file_ext_none_without_extension():
+    assert track._file_ext("/home/x/Makefile") is None
+    assert track._file_ext("") is None
+
+
+def test_build_event_adds_git_branch_when_repo(tmp_path):
+    git = tmp_path / ".git"
+    git.mkdir()
+    (git / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    ev = track.build_event({"session_id": "s", "cwd": str(tmp_path),
+                            "tool_name": "Bash", "tool_input": {"command": "ls"},
+                            "hook_event_name": "PreToolUse"})
+    assert ev["is_git_repo"] is True
+    assert ev["git_branch"] == "main"
+
+
+def test_build_event_omits_git_branch_without_repo(tmp_path):
+    ev = track.build_event({"session_id": "s", "cwd": str(tmp_path),
+                            "tool_name": "Bash", "tool_input": {"command": "ls"},
+                            "hook_event_name": "PreToolUse"})
+    assert ev["is_git_repo"] is False
+    assert "git_branch" not in ev
+
+
+def test_build_event_adds_file_ext_for_file_tools():
+    ev = track.build_event({"session_id": "s", "cwd": r"C:\proj\Demo",
+                            "tool_name": "Edit",
+                            "tool_input": {"file_path": r"C:\proj\Demo\hook.py"},
+                            "hook_event_name": "PreToolUse"})
+    assert ev["file_ext"] == "py"
+
+
+def test_build_event_omits_file_ext_for_non_file_tools():
+    ev = track.build_event({"session_id": "s", "cwd": r"C:\proj\Demo",
+                            "tool_name": "Bash", "tool_input": {"command": "ls"},
+                            "hook_event_name": "PreToolUse"})
+    assert "file_ext" not in ev
+
+
 def _run_hook(stdin_text, env_extra):
     env = dict(os.environ, **env_extra)
     return subprocess.run([sys.executable, str(HOOK)], input=stdin_text,

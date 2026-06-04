@@ -215,6 +215,32 @@ def derive_project(cwd) -> str:
     return parts[-1] if parts else "unknown"
 
 
+def _git_branch(cwd) -> str | None:
+    """Aktueller Branch aus `.git/HEAD` — reiner Dateiread, KEIN subprocess
+    (Hot-Path darf nie blockieren). `ref: refs/heads/<branch>` -> <branch>;
+    Detached HEAD (direkter Hash) -> auf 7 Zeichen gekuerzt. Fail-safe: None
+    bei fehlendem .git oder jedem Fehler."""
+    if not cwd:
+        return None
+    try:
+        head = Path(str(cwd)) / ".git" / "HEAD"
+        content = head.read_text(encoding="utf-8").strip()
+        if content.startswith("ref:"):
+            return content.split("refs/heads/", 1)[-1].strip() or None
+        return content[:7] if content else None
+    except Exception:
+        return None
+
+
+def _file_ext(file_path) -> str | None:
+    """Datei-Endung (ohne Punkt, lowercase) aus einem file_path. None wenn
+    keine Endung oder leer."""
+    if not file_path:
+        return None
+    suffix = Path(str(file_path)).suffix
+    return suffix[1:].lower() if suffix else None
+
+
 def _events_path() -> Path:
     """LAZY: liest Env bei JEDEM Aufruf frisch, nie als Konstante einfrieren."""
     override = os.environ.get("TOOL_TRACKER_DATA")
@@ -264,6 +290,14 @@ def build_event(raw: dict) -> dict:
         "phase": "pre",
         "schema_v": SCHEMA_V,
     }
+    if is_git:
+        branch = _git_branch(cwd)
+        if branch:
+            ev["git_branch"] = branch
+    if tool_name in ("Read", "Write", "Edit", "NotebookEdit") and isinstance(tool_input, dict):
+        ext = _file_ext(tool_input.get("file_path", ""))
+        if ext:
+            ev["file_ext"] = ext
     if tool_name == "Bash":
         ev.update(classify_bash_command(str(tool_input.get("command", ""))))
     elif tool_name.startswith("mcp__"):
