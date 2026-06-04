@@ -57,3 +57,18 @@ def test_threshold_ignores_cross_session_gaps():
     spans = ([_span("a", 0, 100), _span("a", 200, 100)]
              + [_span("b", 0, 100), _span("b", 200, 100)])
     assert load.compute_turn_gap_threshold(spans) == 30000
+
+
+def test_intra_session_gaps_overlapping_clamped_to_zero():
+    # Span 2 startet (1000ms) bevor Span 1 endet (3000ms) -> negativer Gap -> 0
+    spans = [_span("a", 0, 3000), _span("a", 1000, 500)]
+    assert load._intra_session_gaps(spans) == [0.0]
+
+
+def test_intra_session_gaps_skips_none_session_id():
+    # Spans ohne session_id duerfen NICHT zu einer Pseudo-Session gepoolt werden
+    spans = [
+        {"session_id": None, "ts_start": "2026-06-04T10:00:00.000Z", "ts_end": "2026-06-04T10:00:00.100Z"},
+        {"session_id": None, "ts_start": "2026-06-04T10:00:05.000Z", "ts_end": "2026-06-04T10:00:05.100Z"},
+    ]
+    assert load._intra_session_gaps(spans) == []

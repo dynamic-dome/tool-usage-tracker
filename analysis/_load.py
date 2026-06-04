@@ -75,15 +75,19 @@ def _intra_session_gaps(spans):
     """Alle Inter-Span-Gaps (ms) innerhalb je einer Session. Ein Gap ist die
     Pause zwischen ts_end eines Spans und ts_start des chronologisch naechsten
     DERSELBEN Session. Nur Spans mit gueltigem ts_start; negative Gaps (Ueber-
-    lappung) werden auf 0 geklammert."""
+    lappung) werden auf 0 geklammert. Spans ohne session_id (None) werden
+    uebersprungen und nicht zu einem Pseudo-Bucket gepoolt."""
     from collections import defaultdict
     by_sid = defaultdict(list)
     for s in spans:
         start = _ts_to_ms(s.get("ts_start"))
         if start is None:
             continue
+        sid = s.get("session_id")
+        if sid is None:
+            continue
         end = _ts_to_ms(s.get("ts_end"))
-        by_sid[s.get("session_id")].append((start, end if end is not None else start))
+        by_sid[sid].append((start, end if end is not None else start))
     gaps = []
     for items in by_sid.values():
         items.sort(key=lambda t: t[0])
