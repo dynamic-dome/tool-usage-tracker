@@ -14,3 +14,7 @@ __pycache__/
 
 # Node test dependencies
 node_modules/
+
+# Playwright/Dashboard-Screenshots (lokale Test-Artefakte)
+.playwright-mcp/
+dashboard-*.png
