@@ -284,6 +284,38 @@ def path_activity(spans):
     return dict(Counter(s.get("cwd") for s in spans if s.get("cwd")))
 
 
+def assign_turns(spans, threshold):
+    """Setzt auf jedem Span ein session-lokales `turn_index` (0-basiert). Neuer
+    Turn, sobald der Gap zum vorherigen Span derselben Session > threshold (ms).
+    Spans ohne ts_start (Orphans) landen im LETZTEN Turn ihrer Session (bzw.
+    Turn 0, wenn die Session keinen datierten Span hat). Mutiert die Spans in
+    place und gibt die Liste zurueck."""
+    from collections import defaultdict
+    by_sid = defaultdict(list)
+    orphans = defaultdict(list)
+    for s in spans:
+        if _ts_to_ms(s.get("ts_start")) is None:
+            orphans[s.get("session_id")].append(s)
+        else:
+            by_sid[s.get("session_id")].append(s)
+    for sid, items in by_sid.items():
+        items.sort(key=lambda s: _ts_to_ms(s.get("ts_start")))
+        turn = 0
+        prev_end = None
+        for s in items:
+            start = _ts_to_ms(s.get("ts_start"))
+            end = _ts_to_ms(s.get("ts_end"))
+            if prev_end is not None and (start - prev_end) > threshold:
+                turn += 1
+            s["turn_index"] = turn
+            prev_end = end if end is not None else start
+    for sid, items in orphans.items():
+        last_turn = by_sid[sid][-1]["turn_index"] if by_sid.get(sid) else 0
+        for s in items:
+            s["turn_index"] = last_turn
+    return spans
+
+
 def classification_breakdown(spans):
     """Aggregiert die Bash-Klassifizierung (app/intent/risk/mutating) ueber alle
     Spans (gepaart wie ungepaart). Liefert Counts pro risk-Stufe, pro app, pro
