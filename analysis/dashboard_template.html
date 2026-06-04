@@ -343,6 +343,50 @@ function renderTree(data){
   });
 }
 
+// Reine Layout-Funktion fuer EINEN Turn: berechnet pro Span left/width (% der
+// Turn-Breite) anhand des Offsets ab Turn-Start, und eine lane (0-basierte
+// Stapelzeile) fuer zeitlich ueberlappende Spans. Kein DOM-Zugriff -> isoliert
+// in Node testbar (L4-Muster). tsToMs: ISO-Z -> ms oder null.
+function tsToMs(ts){
+  if (!ts) return null;
+  var m = Date.parse(ts);
+  return isNaN(m) ? null : m;
+}
+function turnLayout(spans){
+  // Sortiere chronologisch; Spans ohne ts_start ans Ende.
+  var sorted = spans.slice().sort(function(a, b){
+    var ta = tsToMs(a.ts_start), tb = tsToMs(b.ts_start);
+    if (ta === null && tb === null) return 0;
+    if (ta === null) return 1;
+    if (tb === null) return -1;
+    return ta - tb;
+  });
+  var starts = sorted.map(function(s){ return tsToMs(s.ts_start); }).filter(function(v){ return v !== null; });
+  var ends = sorted.map(function(s){
+    var e = tsToMs(s.ts_end); var st = tsToMs(s.ts_start);
+    return e !== null ? e : st;
+  }).filter(function(v){ return v !== null; });
+  var turnStart = starts.length ? Math.min.apply(null, starts) : 0;
+  var turnEnd = ends.length ? Math.max.apply(null, ends) : turnStart;
+  var span = turnEnd - turnStart;
+  if (span <= 0) span = 1;  // Division-Guard (alle gleichzeitig / Nulldauer)
+  var laneEnds = [];  // pro lane das bisher belegte Ende (ms)
+  var MINW_PCT = 0.5;
+  return sorted.map(function(s){
+    var st = tsToMs(s.ts_start);
+    var en = tsToMs(s.ts_end);
+    var dated = st !== null;
+    var startMs = dated ? st : turnEnd;       // Orphan -> ans Ende
+    var endMs = (en !== null) ? en : startMs;
+    var left = ((startMs - turnStart) / span) * 100;
+    var width = Math.max(MINW_PCT, ((endMs - startMs) / span) * 100);
+    // lane: erste freie Stapelzeile, deren letztes Ende <= startMs
+    var lane = 0;
+    while (lane < laneEnds.length && laneEnds[lane] > startMs) lane++;
+    laneEnds[lane] = endMs;
+    return { span: s, left: left, width: width, lane: lane, dated: dated };
+  });
+}
 function renderTimeline(data){
   var spans = data.spans || [];
   var tl = $('timeline');
