@@ -58,6 +58,19 @@ def _duration_ms(start_ts, end_ts):
         return None
 
 
+def _ts_to_ms(ts):
+    """ISO-Zeitstempel ('%Y-%m-%dT%H:%M:%S.%fZ') -> Millisekunden (float, ab
+    Epoch). None bei unparsebarer/leerer Eingabe."""
+    from datetime import datetime, timezone
+    if not ts:
+        return None
+    try:
+        dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+        return dt.timestamp() * 1000.0
+    except Exception:
+        return None
+
+
 def _classification(ev):
     """Bash-Klassifizierungsfelder aus einem Pre-Event mit definierten Defaults.
     Nicht-Bash-Events/Altdaten ohne diese Felder bekommen leere/neutrale Werte
