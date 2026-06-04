@@ -84,7 +84,8 @@ def test_turn_layout_orphan_without_ts_start_goes_end():
     ];
     var out = turnLayout(spans);
     var orphan = out.filter(function(o){return !o.dated;})[0];
-    console.log(JSON.stringify([orphan.dated, orphan.left >= 0]));
+    console.log(JSON.stringify([orphan.dated, orphan.left]));
     """
-    dated, leftOk = json.loads(_run_node(_harness(body)))
-    assert dated is False and leftOk is True
+    dated, left = json.loads(_run_node(_harness(body)))
+    assert dated is False
+    assert left >= 100   # Orphan sitzt am Turn-Ende (turnEnd -> left = 100%)
