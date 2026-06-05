@@ -250,6 +250,38 @@ def test_live_dashboard_template_has_cost_panel():
     assert "renderCost" in html
 
 
+def test_spans_payload_exposes_comparison(tmp_path):
+    # B-3: Run-Comparison-Aggregat (pro Agent und pro Session) im Payload.
+    p = _write(tmp_path, [
+        {"phase": "pre", "session_id": "s1", "tool_name": "Bash",
+         "tool_use_id": "a1", "ts_utc": "2026-06-05T10:00:00.000Z",
+         "project": "P", "cwd": "c", "summary": "x", "agent": "claude-code"},
+        {"phase": "post", "session_id": "s1", "tool_name": "Bash",
+         "tool_use_id": "a1", "ts_utc": "2026-06-05T10:00:00.300Z",
+         "ok": True, "error": "", "agent": "claude-code"},
+        {"phase": "pre", "session_id": "s2", "tool_name": "Edit",
+         "tool_use_id": "b1", "ts_utc": "2026-06-05T10:01:00.000Z",
+         "project": "P", "cwd": "c", "summary": "x", "agent": "codex"},
+        {"phase": "post", "session_id": "s2", "tool_name": "Edit",
+         "tool_use_id": "b1", "ts_utc": "2026-06-05T10:01:00.500Z",
+         "ok": False, "error": "boom", "agent": "codex"},
+    ])
+    payload = srv.spans_payload(str(p), {})
+    comp = payload["comparison"]
+    assert set(comp) == {"by_agent", "by_session"}
+    assert comp["by_agent"]["claude-code"]["tool_calls"] == 1
+    assert comp["by_agent"]["codex"]["failures"] == 1
+    assert comp["by_session"]["s1"]["total_duration_ms"] == 300
+
+
+def test_live_dashboard_template_has_compare_tab():
+    # B-3: Template muss den Compare-Tab + renderCompare enthalten.
+    html = srv.index_html()
+    assert "Compare" in html
+    assert "renderCompare" in html
+    assert "Run-Comparison" in html
+
+
 def test_parse_query_flags():
     params = srv.parse_query("agent=codex&exclude_self=1&since=2026-06-01")
     assert params["agent"] == "codex"

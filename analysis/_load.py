@@ -393,3 +393,75 @@ def cost_breakdown(spans):
         "cost_by_agent": dict(cost_by_agent),
         "has_cost_data": has,
     }
+
+
+def comparison(spans, key="agent"):
+    """Run-Comparison (B-3): aggregiert Spans pro Gruppe (`key`, i.d.R. "agent"
+    oder "session_id"), um zwei Runs nebeneinander zu vergleichen — speziell den
+    Dual-Agent-Setup (Claude Code vs. Codex am selben Task). Pro Gruppe:
+
+      tool_calls        Anzahl Spans gesamt (gepaart + ungepaart)
+      paired            davon gepaart
+      failures          gepaarte Spans mit ok is False
+      retries           == failures (ehrlich: das Schema hat KEIN explizites
+                        retry-Feld; ein fehlgeschlagener Call ist der beste
+                        verfuegbare Retry-Proxy)
+      success_rate      ok / (ok+fail) ueber gepaarte Spans mit bekanntem ok
+      total_duration_ms Summe duration_ms ueber gepaarte Spans
+      risk              {high,medium,low,unknown} Counts
+      mutating_count    Anzahl mutierender Spans
+      total_cost_usd    Summe cost_usd (None ignoriert)
+
+    None-/fehlende Werte zaehlen nicht in Summen. Reine Anzeige-Aggregation,
+    keine Mutation der Spans.
+    """
+    from collections import defaultdict
+
+    def _blank():
+        return {
+            "tool_calls": 0, "paired": 0, "failures": 0, "retries": 0,
+            "ok": 0, "total_duration_ms": 0,
+            "risk": {"high": 0, "medium": 0, "low": 0, "unknown": 0},
+            "mutating_count": 0, "total_cost_usd": 0.0,
+        }
+
+    groups = defaultdict(_blank)
+    for s in spans:
+        g = groups[s.get(key)]
+        g["tool_calls"] += 1
+        r = s.get("risk") or "unknown"
+        if r not in g["risk"]:
+            g["risk"][r] = 0
+        g["risk"][r] += 1
+        if s.get("mutating"):
+            g["mutating_count"] += 1
+        c = s.get("cost_usd")
+        if isinstance(c, (int, float)) and not isinstance(c, bool):
+            g["total_cost_usd"] += c
+        if s.get("paired"):
+            g["paired"] += 1
+            d = s.get("duration_ms")
+            if isinstance(d, int):
+                g["total_duration_ms"] += d
+            ok = s.get("ok")
+            if ok is True:
+                g["ok"] += 1
+            elif ok is False:
+                g["failures"] += 1
+                g["retries"] += 1
+
+    out = {}
+    for k, g in groups.items():
+        known = g["ok"] + g["failures"]
+        out[k] = {
+            "tool_calls": g["tool_calls"],
+            "paired": g["paired"],
+            "failures": g["failures"],
+            "retries": g["retries"],
+            "success_rate": (g["ok"] / known) if known else None,
+            "total_duration_ms": g["total_duration_ms"],
+            "risk": g["risk"],
+            "mutating_count": g["mutating_count"],
+            "total_cost_usd": round(g["total_cost_usd"], 6),
+        }
+    return out
