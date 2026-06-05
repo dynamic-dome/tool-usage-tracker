@@ -193,11 +193,61 @@ def test_spans_payload_exposes_classification_breakdown(tmp_path):
     assert span["mutating"] is True
 
 
+def test_spans_payload_exposes_cost_breakdown(tmp_path):
+    # A-1: Token-/Kosten-Usage (aus dem Post-Event gemergt) muss im Payload als
+    # Aggregat fuer KPIs + Kosten-Panel verfuegbar sein.
+    p = _write(tmp_path, [
+        {"phase": "pre", "session_id": "s1", "tool_name": "Bash",
+         "tool_use_id": "id1", "ts_utc": "2026-06-02T10:00:00.000Z",
+         "project": "P", "cwd": "c", "summary": "x", "agent": "claude-code"},
+        {"phase": "post", "session_id": "s1", "tool_name": "Bash",
+         "tool_use_id": "id1", "ts_utc": "2026-06-02T10:00:00.200Z",
+         "ok": True, "error": "", "agent": "claude-code",
+         "input_tokens": 1000, "output_tokens": 200,
+         "cache_read_tokens": 5000, "cost_usd": 0.01},
+    ])
+    payload = srv.spans_payload(str(p), {})
+    cost = payload["cost"]
+    assert cost["has_cost_data"] is True
+    assert cost["total_input_tokens"] == 1000
+    assert cost["total_output_tokens"] == 200
+    assert round(cost["total_cost_usd"], 4) == 0.01
+    assert round(cost["cost_by_tool"]["Bash"], 4) == 0.01
+    # Span selbst traegt die Kostenfelder (fuer Timeline-Tooltip)
+    span = payload["spans"][0]
+    assert span["cost_usd"] == 0.01
+    assert span["input_tokens"] == 1000
+
+
+def test_spans_payload_cost_absent_flag_when_no_usage(tmp_path):
+    # Normalfall (kein Ingest): keine Usage-Felder -> has_cost_data False,
+    # Summen 0, Span-Kostenfelder None. Dashboard blendet Panel dann aus.
+    p = _write(tmp_path, [
+        {"phase": "pre", "session_id": "s1", "tool_name": "Bash",
+         "tool_use_id": "id1", "ts_utc": "2026-06-02T10:00:00.000Z",
+         "project": "P", "cwd": "c", "summary": "x", "agent": "claude-code"},
+        {"phase": "post", "session_id": "s1", "tool_name": "Bash",
+         "tool_use_id": "id1", "ts_utc": "2026-06-02T10:00:00.200Z",
+         "ok": True, "error": "", "agent": "claude-code"},
+    ])
+    payload = srv.spans_payload(str(p), {})
+    assert payload["cost"]["has_cost_data"] is False
+    assert payload["cost"]["total_cost_usd"] == 0.0
+    assert payload["spans"][0]["cost_usd"] is None
+
+
 def test_live_dashboard_template_has_risk_facet():
     # Das Template muss die neue Risk-Facette + Mutating-KPI rendern.
     html = srv.index_html()
     assert "Mutating" in html
     assert "Risk" in html or "risk" in html
+
+
+def test_live_dashboard_template_has_cost_panel():
+    # A-1: Template muss Kosten/Token sichtbar machen.
+    html = srv.index_html()
+    assert "Kosten" in html or "Cost" in html or "Token" in html
+    assert "renderCost" in html
 
 
 def test_parse_query_flags():

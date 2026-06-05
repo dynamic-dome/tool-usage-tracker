@@ -12,7 +12,7 @@ from urllib.parse import urlparse, parse_qs
 
 from _load import (load_events, pair_events, pairing_summary, success_rate_by,
                    duration_stats_by, path_activity, classification_breakdown,
-                   compute_turn_gap_threshold, assign_turns)
+                   compute_turn_gap_threshold, assign_turns, cost_breakdown)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA = ROOT / "data" / "events.jsonl"
@@ -65,6 +65,7 @@ def spans_payload(data_path, params):
         "path_activity": path_activity(spans),
         "pairing": pairing_summary(spans),
         "classification": classification_breakdown(spans),
+        "cost": cost_breakdown(spans),
     }
 
 

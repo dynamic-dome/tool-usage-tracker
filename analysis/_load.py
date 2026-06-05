@@ -126,6 +126,22 @@ def _classification(ev):
     }
 
 
+def _cost(ev):
+    """Optionale Token-/Kosten-Felder aus einem Event (A-1). Claude Code liefert
+    Usage NICHT im Tool-Result, sondern ueber OTLP-Metrics; ein separater Ingest-
+    Schritt kann diese Felder ins Post-Event mergen. Fehlen sie (Normalfall),
+    bleibt der Wert None — abwaertskompatibel, kein Schema-Zwang."""
+    def _num(key):
+        v = ev.get(key)
+        return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+    return {
+        "input_tokens": _num("input_tokens"),
+        "output_tokens": _num("output_tokens"),
+        "cache_read_tokens": _num("cache_read_tokens"),
+        "cost_usd": _num("cost_usd"),
+    }
+
+
 def _paired_span(pre, post, method):
     span = {
         "tool_name": pre.get("tool_name"), "agent": pre.get("agent"),
@@ -141,6 +157,8 @@ def _paired_span(pre, post, method):
         "file_ext": pre.get("file_ext", ""),
     }
     span.update(_classification(pre))
+    # Token-/Kosten-Usage gehoert zum Tool-RESULT -> aus dem Post-Event lesen.
+    span.update(_cost(post))
     return span
 
 
@@ -156,6 +174,7 @@ def _orphan_post_span(ev):
     }
     # Post-Events tragen keine Klassifizierung -> neutrale Defaults.
     span.update(_classification(ev))
+    span.update(_cost(ev))
     return span
 
 
@@ -172,6 +191,8 @@ def _unpaired_pre_span(pre):
         "file_ext": pre.get("file_ext", ""),
     }
     span.update(_classification(pre))
+    # Unpaired-Pre hat (noch) kein Result -> Kosten unbekannt (None).
+    span.update(_cost(pre))
     return span
 
 
@@ -335,4 +356,40 @@ def classification_breakdown(spans):
         "by_app": dict(by_app),
         "by_intent": dict(by_intent),
         "mutating_count": mutating_count,
+    }
+
+
+def cost_breakdown(spans):
+    """Aggregiert Token-/Kosten-Daten (A-1) ueber alle Spans. None-Werte (fehlende
+    Usage) zaehlen nicht in die Summen. `has_cost_data` ist True, sobald MINDESTENS
+    ein Span echte Kostendaten traegt — das Dashboard blendet das Panel sonst aus,
+    statt irrefuehrende Nullen zu zeigen. Kosten pro Tool/Agent fuer die Panels."""
+    from collections import defaultdict
+
+    def _s(key):
+        return sum(s[key] for s in spans
+                   if isinstance(s.get(key), (int, float)) and not isinstance(s.get(key), bool))
+
+    cost_by_tool = defaultdict(float)
+    cost_by_agent = defaultdict(float)
+    has = False
+    for s in spans:
+        c = s.get("cost_usd")
+        if isinstance(c, (int, float)) and not isinstance(c, bool):
+            has = True
+            cost_by_tool[s.get("tool_name")] += c
+            cost_by_agent[s.get("agent")] += c
+    # Auch reine Token-Daten ohne cost_usd sollen has_cost_data setzen.
+    if not has:
+        has = any(isinstance(s.get(k), (int, float)) and not isinstance(s.get(k), bool)
+                  for s in spans
+                  for k in ("input_tokens", "output_tokens", "cache_read_tokens"))
+    return {
+        "total_input_tokens": _s("input_tokens"),
+        "total_output_tokens": _s("output_tokens"),
+        "total_cache_read_tokens": _s("cache_read_tokens"),
+        "total_cost_usd": _s("cost_usd"),
+        "cost_by_tool": dict(cost_by_tool),
+        "cost_by_agent": dict(cost_by_agent),
+        "has_cost_data": has,
     }

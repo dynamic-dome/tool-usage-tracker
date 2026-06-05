@@ -245,3 +245,73 @@ def test_classification_breakdown_ignores_empty_app():
     bd = load.classification_breakdown(spans)
     assert "" not in bd["by_app"]
     assert bd["mutating_count"] == 0
+
+
+# --- A-1: Token-/Kosten-Daten pro Span -------------------------------------
+# Claude Code liefert Token-Usage NICHT im Tool-Result, sondern ueber einen
+# separaten Kanal (OTLP-Metrics). Der Loader liest daher OPTIONALE Felder
+# (input_tokens/output_tokens/cache_read_tokens/cost_usd), die ein Ingest-Schritt
+# ins Post-Event mergen kann. Fehlen sie (Normalfall heute), bleibt es None.
+
+def test_span_carries_cost_fields_from_post_when_present():
+    evs = [_pre("s1", "Bash", "2026-06-02T10:00:00.000Z"),
+           _post("s1", "Bash", "2026-06-02T10:00:00.340Z")
+           | {"input_tokens": 1200, "output_tokens": 350,
+              "cache_read_tokens": 8000, "cost_usd": 0.0123}]
+    s = load.pair_events(evs)[0]
+    assert s["input_tokens"] == 1200
+    assert s["output_tokens"] == 350
+    assert s["cache_read_tokens"] == 8000
+    assert s["cost_usd"] == 0.0123
+
+
+def test_span_cost_fields_default_none_when_absent():
+    # Abwaertskompatibel: Altdaten/normale Events ohne Usage -> None, kein KeyError.
+    evs = [_pre("s1", "Bash", "2026-06-02T10:00:00.000Z"),
+           _post("s1", "Bash", "2026-06-02T10:00:00.340Z")]
+    s = load.pair_events(evs)[0]
+    assert s["input_tokens"] is None
+    assert s["output_tokens"] is None
+    assert s["cache_read_tokens"] is None
+    assert s["cost_usd"] is None
+
+
+def test_cost_breakdown_sums_tokens_and_cost():
+    spans = [
+        {"tool_name": "Bash", "agent": "claude-code", "input_tokens": 1000,
+         "output_tokens": 200, "cache_read_tokens": 5000, "cost_usd": 0.01},
+        {"tool_name": "Edit", "agent": "claude-code", "input_tokens": 500,
+         "output_tokens": 100, "cache_read_tokens": 0, "cost_usd": 0.005},
+        {"tool_name": "Bash", "agent": "codex", "input_tokens": 300,
+         "output_tokens": 50, "cache_read_tokens": 0, "cost_usd": 0.002},
+    ]
+    bd = load.cost_breakdown(spans)
+    assert bd["total_input_tokens"] == 1800
+    assert bd["total_output_tokens"] == 350
+    assert bd["total_cache_read_tokens"] == 5000
+    assert round(bd["total_cost_usd"], 4) == 0.017
+    assert round(bd["cost_by_tool"]["Bash"], 4) == 0.012
+    assert round(bd["cost_by_agent"]["codex"], 4) == 0.002
+    assert bd["has_cost_data"] is True
+
+
+def test_cost_breakdown_robust_against_none_and_empty():
+    # Mischung aus Spans mit/ohne Kosten: None darf nicht in die Summe einfliessen.
+    spans = [
+        {"tool_name": "Bash", "agent": "claude-code", "input_tokens": None,
+         "output_tokens": None, "cache_read_tokens": None, "cost_usd": None},
+        {"tool_name": "Bash", "agent": "claude-code", "input_tokens": 100,
+         "output_tokens": 20, "cache_read_tokens": 0, "cost_usd": 0.003},
+    ]
+    bd = load.cost_breakdown(spans)
+    assert bd["total_input_tokens"] == 100
+    assert round(bd["total_cost_usd"], 4) == 0.003
+    assert bd["has_cost_data"] is True
+
+
+def test_cost_breakdown_no_data_flag_when_all_none():
+    spans = [{"tool_name": "Bash", "agent": "claude-code", "input_tokens": None,
+              "output_tokens": None, "cache_read_tokens": None, "cost_usd": None}]
+    bd = load.cost_breakdown(spans)
+    assert bd["has_cost_data"] is False
+    assert bd["total_cost_usd"] == 0.0

@@ -72,6 +72,7 @@ canvas{max-height:300px}
     <div class="card full"><h2>Aktivit&auml;t &uuml;ber Zeit</h2><canvas id="cDays"></canvas></div>
     <div class="card"><h2>Risk-Verteilung</h2><canvas id="cRisk"></canvas><div class="muted" id="riskNote" style="margin-top:8px;font-size:12px"></div></div>
     <div class="card"><h2>App / Intent (mutating hervorgehoben)</h2><div class="tree" id="appTree"></div></div>
+    <div class="card" id="costCard" style="display:none"><h2>Kosten &amp; Token pro Tool</h2><canvas id="cCost"></canvas><div class="muted" id="costNote" style="margin-top:8px;font-size:12px"></div></div>
     <div class="card full"><h2>Pfad-Aktivit&auml;t &mdash; Treemap</h2>
       <div class="muted" id="tmHint" style="margin-bottom:8px">Klick auf eine Kachel filtert den Heat-Baum darunter.</div>
       <div class="treemap" id="treemap"></div>
@@ -98,6 +99,13 @@ var selectedPath = null;
 function $(id){ return document.getElementById(id); }
 
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+function fmtNum(n){ return (n == null ? 0 : n).toLocaleString('de-DE'); }
+function fmtUsd(n){
+  var v = (n == null ? 0 : n);
+  // kleine Betraege mit mehr Nachkommastellen, damit Cent-Bruchteile sichtbar bleiben
+  return '$' + (v < 1 ? v.toFixed(4) : v.toFixed(2));
+}
 
 function destroyChart(key){
   if (charts[key]) { charts[key].destroy(); charts[key] = null; }
@@ -152,6 +160,12 @@ function renderKPIs(data){
     ['&#216; Dauer (alle)', avg + ' ms'],
     ['p95 Dauer (alle)', p95 + ' ms']
   ];
+  // A-1: Kosten-/Token-KPIs nur zeigen, wenn ein Ingest echte Usage gemergt hat.
+  var cost = data.cost || {};
+  if (cost.has_cost_data) {
+    rows.push(['&#931; Kosten', fmtUsd(cost.total_cost_usd)]);
+    rows.push(['&#931; Tokens (in/out)', fmtNum(cost.total_input_tokens) + ' / ' + fmtNum(cost.total_output_tokens)]);
+  }
   $('kpis').innerHTML = rows.map(function(rc){
     return '<div class="kpi"><div class="v">' + rc[1] + '</div><div class="l">' + rc[0] + '</div></div>';
   }).join('');
@@ -268,6 +282,36 @@ function renderAppTree(data){
   foot.style.marginTop = '8px';
   foot.innerHTML = '<span class="muted">mutating gesamt:</span> <span class="badge" style="background:' + RISK_COLOR.high + '">' + mut + '</span>';
   el.appendChild(foot);
+}
+
+function renderCost(data){
+  // A-1: Kosten/Token pro Tool. Panel bleibt versteckt, solange kein Ingest
+  // echte Usage-Daten gemergt hat (has_cost_data=false) — keine Null-Balken.
+  var cost = data.cost || {};
+  var card = $('costCard');
+  if (!card) return;
+  destroyChart('cost');
+  if (!cost.has_cost_data) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  var byTool = cost.cost_by_tool || {};
+  var keys = Object.keys(byTool).sort(function(a, b){ return byTool[b] - byTool[a]; });
+  var vals = keys.map(function(k){ return byTool[k]; });
+  var note = $('costNote');
+  if (note) {
+    note.textContent = 'Cache-Read: ' + fmtNum(cost.total_cache_read_tokens) +
+      ' Tokens · gesamt ' + fmtUsd(cost.total_cost_usd);
+  }
+  if (!window.Chart) return;
+  charts.cost = new Chart($('cCost'), {
+    type: 'bar',
+    data: { labels: keys, datasets: [{ label: 'USD', data: vals, backgroundColor: AC }] },
+    options: {
+      indexAxis: 'y',
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: function(c){ return fmtUsd(c.parsed.x); } } } },
+      scales: { x: { ticks: { callback: function(v){ return fmtUsd(v); } } } }
+    }
+  });
 }
 
 function renderErr(data){
@@ -485,6 +529,7 @@ function renderAll(data){
   renderErr(data);
   renderRisk(data);
   renderAppTree(data);
+  renderCost(data);
   renderTreemap(data);
   renderTree(data);
   renderTimeline(data);
