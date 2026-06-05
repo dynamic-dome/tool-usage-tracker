@@ -17,6 +17,45 @@ def _write(tmp_path, rows):
     return p
 
 
+def test_spans_payload_enriches_tokens_from_ccusage(tmp_path, monkeypatch):
+    """Liegt ein tokens_by_request.json vor (ccusage-Ingest), reichert
+    spans_payload die Spans ueber tool_use_id an und cost_breakdown traegt Daten."""
+    p = _write(tmp_path, [
+        {"phase": "pre", "tool_name": "Read", "session_id": "s",
+         "tool_use_id": "toolu_A", "ts_utc": "2026-06-04T10:00:00.000Z"},
+        {"phase": "post", "tool_name": "Read", "session_id": "s",
+         "tool_use_id": "toolu_A", "ts_utc": "2026-06-04T10:00:01.000Z", "ok": True},
+    ])
+    tokens = tmp_path / "tokens_by_request.json"
+    tokens.write_text(json.dumps({
+        "req-1": {"input_tokens": 100, "output_tokens": 10,
+                  "cache_read_tokens": 0, "cache_creation_tokens": 0,
+                  "session_id": "s", "model": "claude-opus-4-8",
+                  "tool_use_ids": ["toolu_A"], "cost_usd": 2.25},
+    }), encoding="utf-8")
+    monkeypatch.setenv("TOOL_TRACKER_TOKENS", str(tokens))
+    payload = srv.spans_payload(str(p), {})
+    assert payload["cost"]["has_cost_data"] is True
+    span = next(s for s in payload["spans"] if s.get("paired"))
+    assert span["input_tokens"] == 100
+    assert span["cost_usd"] == 2.25
+    assert span["turn_tokens"] is True
+
+
+def test_spans_payload_no_tokens_file_is_graceful(tmp_path, monkeypatch):
+    """Ohne tokens_by_request.json bleibt alles wie bisher (kein Crash, keine
+    Kostendaten)."""
+    p = _write(tmp_path, [
+        {"phase": "pre", "tool_name": "Read", "session_id": "s",
+         "tool_use_id": "toolu_A", "ts_utc": "2026-06-04T10:00:00.000Z"},
+        {"phase": "post", "tool_name": "Read", "session_id": "s",
+         "tool_use_id": "toolu_A", "ts_utc": "2026-06-04T10:00:01.000Z", "ok": True},
+    ])
+    monkeypatch.setenv("TOOL_TRACKER_TOKENS", str(tmp_path / "nope.json"))
+    payload = srv.spans_payload(str(p), {})
+    assert payload["cost"]["has_cost_data"] is False
+
+
 def test_spans_json_pairs_events(tmp_path):
     p = _write(tmp_path, [
         {"phase": "pre", "session_id": "s1", "tool_name": "Bash",

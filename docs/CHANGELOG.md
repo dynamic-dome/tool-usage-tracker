@@ -1,4 +1,34 @@
 # CHANGELOG
+## 2026-06-05
+- **JSONL-Rotation + Multi-File-Loader** (Task 2, TDD):
+  - Hot-Path (`track_tool_use.py`): `events.jsonl` rotiert bei ≥ Schwelle (Default **5 MB**,
+    Env `TOOL_TRACKER_MAX_BYTES`) zu `events.N.jsonl` (`_rotate_if_needed`/`_next_part_path`/
+    `_max_bytes`). Rein **additiv**, vollständig fail-safe (jeder Fehler verschluckt → Append
+    greift trotzdem, exit 0 bleibt garantiert). Live ausgelöst, 0 Datenverlust.
+  - Loader (`_load.py`): `load_events` liest aktive Datei **+ alle `events.*.jsonl`-Teile**
+    (numerisch sortiert, älteste zuerst) via `_iter_event_files`/`_rotated_part_files`; neuer
+    `tail=N`-Parameter (B-09, Default „alle"). `report`/`server`/`dashboard` erben das transparent.
+- **ccusage-Token-Ingest — Token/Kosten im Abo-Modell** (Task 1, kein API-Key, TDD):
+  - `analysis/ingest_ccusage.py` (NEU, Cold-Path, stdlib-only): liest Claude Codes lokale
+    Session-JSONL aus `~/.claude/projects/<hash>/*.jsonl` (Env `CLAUDE_PROJECTS_DIR`) — dieselbe
+    Quelle wie das Community-Tool `ccusage`. Extrahiert `usage`-Token **pro `requestId`/Turn**
+    (ehrlich: CC trägt eine usage-Summe pro Denk-Schritt, kein künstliches Pro-Call-Aufsplitten)
+    + die `toolu_…`-IDs des Turns → `data/tokens_by_request.json`. Offline-Preistabelle pro Modell →
+    **rechnerischer USD-Gegenwert** (im Abo zahlt man die Flatrate, klar so etikettiert).
+  - Loader-Brücke `enrich_spans_with_tokens(spans, by_req)`: joint Turn-Token über `tool_use_id`
+    → Span (`turn_tokens=True`, `request_id`); `_paired_span` trägt jetzt `tool_use_id` im Span.
+  - `server.py`: `_tokens_path()` (lazy, Env `TOOL_TRACKER_TOKENS`) + `_load_tokens_by_request()`
+    (graceful); `spans_payload` reichert Spans an, sobald `tokens_by_request.json` existiert. Das
+    **bestehende A-1-Cost-Panel** (Σ Kosten/Tokens, Kosten-pro-Tool) rendert dann automatisch —
+    keine Template-Änderung nötig.
+  - `cost_breakdown` auf **Turn-Dedup** umgebaut: Σ-KPIs zählen jeden `request_id` nur EINMAL
+    (sonst inflationiert ein Turn mit N Calls die Summe ×N), Pro-Tool/Agent bleibt je Call.
+  - **Codex-Verifier (Agent 1):** 1 echter MAJOR — der Turn-Dedup verschluckte die Summe, wenn der
+    erste Span eines Turns tokenlos war (frühes `seen`-Markieren); reproduziert + per TDD gefixt
+    (reihenfolge-unabhängige Sammlung pro request_id) + Regressionstest.
+  - Abgrenzung zu `ingest_otlp.py` (A-1): jenes braucht aktivierte OTLP-Telemetrie und ordnet nur
+    pro Session zu; ccusage braucht keine Aktivierung und ordnet pro Turn zu.
+
 ## 2026-06-04
 - **A-5 — Kontext-Felder im PreToolUse-Event** (`5942166`+`a4527bf`, TDD):
   - `git_branch` aus `.git/HEAD` (reiner Dateiread, **kein** subprocess → Hot-Path-sicher;

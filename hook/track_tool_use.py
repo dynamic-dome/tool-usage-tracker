@@ -272,6 +272,41 @@ def _events_path() -> Path:
     return Path(__file__).resolve().parents[1] / "data" / "events.jsonl"
 
 
+# Default-Rotationsschwelle: 5 MB. Per Env ueberschreibbar (Tests setzen sie klein).
+DEFAULT_MAX_BYTES = 5 * 1024 * 1024
+
+
+def _max_bytes() -> int:
+    """LAZY: Rotationsschwelle in Bytes. <=0 schaltet Rotation ab."""
+    try:
+        return int(os.environ.get("TOOL_TRACKER_MAX_BYTES", DEFAULT_MAX_BYTES))
+    except (TypeError, ValueError):
+        return DEFAULT_MAX_BYTES
+
+
+def _next_part_path(path: Path) -> Path:
+    """Naechster freier events.N.jsonl-Name neben `path` (N hochzaehlend).
+    events.jsonl -> events.1.jsonl, events.2.jsonl, ..."""
+    n = 1
+    while (cand := path.with_suffix(f".{n}{path.suffix}")).exists():
+        n += 1
+    return cand
+
+
+def _rotate_if_needed(path: Path, limit: int) -> None:
+    """Rotiert `path` zu events.N.jsonl, wenn die aktive Datei `limit` Bytes
+    erreicht/ueberschreitet. Fail-safe: jeder Fehler wird verschluckt, damit
+    der Hot-Path danach trotzdem anhaengen kann (Append ueberlebt eine
+    fehlgeschlagene Rotation, exit 0 bleibt garantiert)."""
+    if limit <= 0:
+        return
+    try:
+        if path.exists() and path.stat().st_size >= limit:
+            os.rename(path, _next_part_path(path))
+    except Exception:
+        pass  # Rotation ist best-effort; Append im Caller faengt es auf
+
+
 AGENT = "claude-code"
 SCHEMA_V = 2
 
@@ -335,6 +370,7 @@ def main() -> int:
         ev = build_event(raw)
         path = _events_path()
         path.parent.mkdir(parents=True, exist_ok=True)
+        _rotate_if_needed(path, _max_bytes())
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(ev, ensure_ascii=False) + "\n")
     except Exception:

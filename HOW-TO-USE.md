@@ -48,6 +48,15 @@ nur die Stdlib.
   parst Claude-Code-OTLP-Metrics (console- + OTLP/JSON-Format) zu `usage_by_session.json`
   (Default-Output). Wichtig: OTLP-Metrics tragen nur `session.id`, **keine** `tool_use_id` —
   Kosten sind daher nur **pro Session** zuordenbar, nicht pro Tool-Call.
+- **Token im Abo-Modell einlesen (ccusage):** `python analysis/ingest_ccusage.py [out.json]`
+  liest Claude Codes lokale Session-JSONL aus `~/.claude/projects/<hash>/*.jsonl` (Env
+  `CLAUDE_PROJECTS_DIR` überschreibt den Pfad) und schreibt `data/tokens_by_request.json`
+  (Default). **Kein API-Key, keine Telemetrie-Aktivierung nötig** — dieselbe Quelle wie das
+  Tool `ccusage`. Token werden **pro Turn (`requestId`)** erfasst; eine Offline-Preistabelle
+  liefert den **rechnerischen USD-Gegenwert** (im Abo zahlt man die Flatrate, nicht diese Summe).
+  Sobald die Datei existiert, reichert der Live-Server (`server.py`) die Spans automatisch an
+  (Env `TOOL_TRACKER_TOKENS` überschreibt den Pfad) und das Kosten-/Token-Panel erscheint.
+  Workflow: `python analysis/ingest_ccusage.py` → `python analysis/server.py --port 8770`.
 - **Ad-hoc-SQL via DuckDB (B-6):** `python analysis/sql.py "<SQL>" [data.jsonl]` — beliebiges
   SQL gegen zwei Views: `events` (rohe Zeilen) und `spans` (in SQL gepaart). Window-Functions
   (p50/p95 …) inklusive. Optionales Add-on: `pip install duckdb`; ohne DuckDB endet die CLI

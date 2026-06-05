@@ -16,29 +16,55 @@ def _is_self_event(ev):
     return any(m in summary for m in _SELF_SUMMARY_MARKERS)
 
 
-def load_events(path, agent=None, project=None, since=None, exclude_self=False):
+def _rotated_part_files(path):
+    """Rotierte Teil-Dateien events.N.<suffix> neben `path`, nach N sortiert.
+    Diese entstehen durch die Hot-Path-Rotation (events.jsonl ->
+    events.1.jsonl, events.2.jsonl, ...). Aelteste (kleinstes N) zuerst, damit
+    sie chronologisch VOR der aktiven Datei gelesen werden."""
+    stem = path.stem            # "events"
+    suffix = path.suffix        # ".jsonl"
+    parts = []
+    for cand in path.parent.glob(f"{stem}.*{suffix}"):
+        mid = cand.name[len(stem) + 1: -len(suffix)] if suffix else cand.name
+        if mid.isdigit():
+            parts.append((int(mid), cand))
+    return [c for _, c in sorted(parts)]
+
+
+def _iter_event_files(path):
+    """Alle Event-Dateien in Lesereihenfolge: rotierte Teile (aelteste zuerst),
+    dann die aktive Datei."""
+    files = _rotated_part_files(path)
+    if path.exists():
+        files.append(path)
+    return files
+
+
+def load_events(path, agent=None, project=None, since=None,
+                exclude_self=False, tail=None):
     path = Path(path)
-    if not path.exists():
-        return []
     out = []
-    with path.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                ev = json.loads(line)
-            except Exception:
-                continue
-            if agent and ev.get("agent") != agent:
-                continue
-            if project and ev.get("project") != project:
-                continue
-            if since and str(ev.get("ts_utc", "")) < since:
-                continue
-            if exclude_self and _is_self_event(ev):
-                continue
-            out.append(ev)
+    for fpath in _iter_event_files(path):
+        with fpath.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except Exception:
+                    continue
+                if agent and ev.get("agent") != agent:
+                    continue
+                if project and ev.get("project") != project:
+                    continue
+                if since and str(ev.get("ts_utc", "")) < since:
+                    continue
+                if exclude_self and _is_self_event(ev):
+                    continue
+                out.append(ev)
+    if tail is not None and tail >= 0:
+        return out[-tail:] if tail else []
     return out
 
 
@@ -142,6 +168,51 @@ def _cost(ev):
     }
 
 
+def enrich_spans_with_tokens(spans, by_req):
+    """Reichert Spans mit Token-/Kosten-Daten aus dem ccusage-Ingest an
+    (analysis/ingest_ccusage.py -> data/tokens_by_request.json).
+
+    `by_req` ist {request_id: {input_tokens, output_tokens, cache_read_tokens,
+    cache_creation_tokens, cost_usd, tool_use_ids, ...}}. Der Join laeuft ueber
+    span.tool_use_id -> requestId. Da eine assistant-Message (= ein Turn) nur EINE
+    usage-Summe traegt, erben ALLE Tool-Calls desselben Turns dieselben Werte;
+    das wird mit `turn_tokens=True` ehrlich markiert (es sind Turn-, keine
+    Pro-Call-Zahlen). Spans ohne passende ID bleiben unveraendert (Token None).
+
+    Nicht-mutierend: liefert NEUE Span-Dicts, faesst die Eingabe nicht an.
+    """
+    # Index tool_use_id -> (request_id, record), einmal aufbauen.
+    by_tuid = {}
+    for req, rec in (by_req or {}).items():
+        for tuid in rec.get("tool_use_ids", []):
+            by_tuid[tuid] = (req, rec)
+
+    out = []
+    for span in spans:
+        new = dict(span)
+        tuid = span.get("tool_use_id")
+        hit = by_tuid.get(tuid) if tuid else None
+        if hit:
+            req, rec = hit
+            new["request_id"] = req
+            new["input_tokens"] = rec.get("input_tokens")
+            new["output_tokens"] = rec.get("output_tokens")
+            new["cache_read_tokens"] = rec.get("cache_read_tokens")
+            new["cache_creation_tokens"] = rec.get("cache_creation_tokens")
+            if "cost_usd" in rec:
+                new["cost_usd"] = rec["cost_usd"]
+            new["turn_tokens"] = True
+        else:
+            # Keine Zuordnung -> Felder explizit auf None, damit der Auswerte-Pfad
+            # einheitliche Keys sieht (kein KeyError), aber turn_tokens nicht True.
+            new.setdefault("input_tokens", None)
+            new.setdefault("output_tokens", None)
+            new.setdefault("cache_read_tokens", None)
+            new.setdefault("cache_creation_tokens", None)
+        out.append(new)
+    return out
+
+
 def _paired_span(pre, post, method):
     span = {
         "tool_name": pre.get("tool_name"), "agent": pre.get("agent"),
@@ -155,6 +226,9 @@ def _paired_span(pre, post, method):
         "orphan_kind": "",
         "git_branch": pre.get("git_branch", ""),
         "file_ext": pre.get("file_ext", ""),
+        # tool_use_id im Span behalten: Bruecke zum ccusage-Token-Ingest, der
+        # Turn-Token ueber (tool_use_id -> requestId) joint (enrich_spans_with_tokens).
+        "tool_use_id": pre.get("tool_use_id", ""),
     }
     span.update(_classification(pre))
     # Token-/Kosten-Usage gehoert zum Tool-RESULT -> aus dem Post-Event lesen.
@@ -359,36 +433,71 @@ def classification_breakdown(spans):
     }
 
 
+def _num_field(s, key):
+    v = s.get(key)
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
 def cost_breakdown(spans):
-    """Aggregiert Token-/Kosten-Daten (A-1) ueber alle Spans. None-Werte (fehlende
+    """Aggregiert Token-/Kosten-Daten ueber alle Spans. None-Werte (fehlende
     Usage) zaehlen nicht in die Summen. `has_cost_data` ist True, sobald MINDESTENS
     ein Span echte Kostendaten traegt — das Dashboard blendet das Panel sonst aus,
-    statt irrefuehrende Nullen zu zeigen. Kosten pro Tool/Agent fuer die Panels."""
-    from collections import defaultdict
+    statt irrefuehrende Nullen zu zeigen. Kosten pro Tool/Agent fuer die Panels.
 
-    def _s(key):
-        return sum(s[key] for s in spans
-                   if isinstance(s.get(key), (int, float)) and not isinstance(s.get(key), bool))
+    TURN-DEDUP (ccusage-Ingest): Token gelten PRO TURN (ein requestId traegt EINE
+    usage-Summe), aber jeder Tool-Call des Turns hat sie geerbt (turn_tokens=True).
+    Die Sigma-KPIs duerfen einen Turn daher nur EINMAL zaehlen — sonst inflationiert
+    ein Turn mit N Calls die Gesamtsumme um Faktor N. Wir deduplizieren die
+    Sigma-Summen ueber `request_id`. Die Pro-Tool-/Pro-Agent-Aufschluesselung
+    bleibt bewusst je Call (zeigt, an welchem Tool die Turn-Token haengen).
+    Spans OHNE request_id (OTLP-Pfad/Altdaten) zaehlen wie bisher pro Span."""
+    from collections import defaultdict
 
     cost_by_tool = defaultdict(float)
     cost_by_agent = defaultdict(float)
     has = False
+    _FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "cost_usd")
+
+    # Sigma-Summen mit Turn-Dedup. Pro-Tool/Agent-Kosten zaehlen je Call; die
+    # Sigma-Summen zaehlen jeden Turn (request_id) nur EINMAL. Wichtig: NICHT den
+    # ersten Span eines Turns als "gesehen" markieren (der koennte tokenlos sein),
+    # sondern die Turn-Werte separat sammeln und erst am Ende summieren — so ist
+    # die Zaehlung reihenfolge-unabhaengig (Verifier-MAJOR 2026-06-05).
+    sigma = defaultdict(float)        # nur fuer Spans OHNE request_id (pro Span)
+    per_req = {}                      # request_id -> {feld: wert} (einmal pro Turn)
     for s in spans:
-        c = s.get("cost_usd")
-        if isinstance(c, (int, float)) and not isinstance(c, bool):
+        c = _num_field(s, "cost_usd")
+        if c is not None:
             has = True
             cost_by_tool[s.get("tool_name")] += c
             cost_by_agent[s.get("agent")] += c
-    # Auch reine Token-Daten ohne cost_usd sollen has_cost_data setzen.
+        req = s.get("request_id")
+        if req:
+            rec = per_req.setdefault(req, {})
+            for key in _FIELDS:
+                if key not in rec:  # ersten getragenen Wert je Feld/Turn nehmen
+                    v = _num_field(s, key)
+                    if v is not None:
+                        rec[key] = v
+        else:
+            for key in _FIELDS:
+                v = _num_field(s, key)
+                if v is not None:
+                    sigma[key] += v
+
+    # Turn-Werte (dedupliziert) auf die Sigma-Summen addieren.
+    for rec in per_req.values():
+        for key, v in rec.items():
+            sigma[key] += v
+
     if not has:
-        has = any(isinstance(s.get(k), (int, float)) and not isinstance(s.get(k), bool)
-                  for s in spans
+        has = any(_num_field(s, k) is not None for s in spans
                   for k in ("input_tokens", "output_tokens", "cache_read_tokens"))
     return {
-        "total_input_tokens": _s("input_tokens"),
-        "total_output_tokens": _s("output_tokens"),
-        "total_cache_read_tokens": _s("cache_read_tokens"),
-        "total_cost_usd": _s("cost_usd"),
+        "total_input_tokens": sigma["input_tokens"],
+        "total_output_tokens": sigma["output_tokens"],
+        "total_cache_read_tokens": sigma["cache_read_tokens"],
+        "total_cost_usd": sigma["cost_usd"],
         "cost_by_tool": dict(cost_by_tool),
         "cost_by_agent": dict(cost_by_agent),
         "has_cost_data": has,

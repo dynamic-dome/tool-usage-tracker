@@ -7,16 +7,38 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import argparse
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
 from _load import (load_events, pair_events, pairing_summary, success_rate_by,
                    duration_stats_by, path_activity, classification_breakdown,
                    compute_turn_gap_threshold, assign_turns, cost_breakdown,
-                   comparison)
+                   comparison, enrich_spans_with_tokens)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA = ROOT / "data" / "events.jsonl"
+DEFAULT_TOKENS = ROOT / "data" / "tokens_by_request.json"
+
+
+def _tokens_path():
+    """LAZY: Pfad zum ccusage-Token-Aggregat. Env TOOL_TRACKER_TOKENS ueber-
+    schreibt (Test-Isolation); Default data/tokens_by_request.json."""
+    override = os.environ.get("TOOL_TRACKER_TOKENS")
+    return Path(override) if override else DEFAULT_TOKENS
+
+
+def _load_tokens_by_request():
+    """tokens_by_request.json laden, wenn vorhanden. Graceful: fehlende/kaputte
+    Datei -> leeres Dict (Token-Anreicherung ist optional, nie blockierend)."""
+    path = _tokens_path()
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (ValueError, OSError):
+        return {}
 CHARTJS = ROOT / "vendor" / "chart.umd.min.js"
 DASHBOARD_TEMPLATE = Path(__file__).resolve().with_name("dashboard_template.html")
 
@@ -48,6 +70,11 @@ def spans_payload(data_path, params):
                       since=params.get("since"),
                       exclude_self=params.get("exclude_self") in ("1", "true", "True"))
     spans = pair_events(evs)
+    # Token-/Kosten-Anreicherung aus dem ccusage-Ingest (optional, graceful):
+    # joint Turn-Token ueber tool_use_id, sobald data/tokens_by_request.json da ist.
+    by_req = _load_tokens_by_request()
+    if by_req:
+        spans = enrich_spans_with_tokens(spans, by_req)
     turn_gap_ms = compute_turn_gap_threshold(spans)
     assign_turns(spans, turn_gap_ms)
     # Auswahl-Optionen aus ALLEN Events (ungefiltert) — sonst könnte man von
