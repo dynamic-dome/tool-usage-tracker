@@ -1,4 +1,55 @@
 # CHANGELOG
+## 2026-06-04
+- **A-5 — Kontext-Felder im PreToolUse-Event** (`5942166`+`a4527bf`, TDD):
+  - `git_branch` aus `.git/HEAD` (reiner Dateiread, **kein** subprocess → Hot-Path-sicher;
+    bounded `read_bytes(256)`, strikter `refs/heads/`-Check, Worktree-`.git`-Datei via
+    gitdir-Pointer aufgelöst, Detached HEAD → 7-Zeichen-Hash).
+  - `file_ext` (lowercase Endung) für Datei-Tools (`Read`/`Write`/`Edit`/`NotebookEdit`).
+  - Codex-Verifier fand 3 reale Edge-Cases (unbounded read, refs/tags|remotes, Worktree) →
+    alle per TDD gefixt.
+- **B-1 — Trace-Waterfall pro Turn** (`13aa10b` Spec, `7dc1b16` Plan, `b13beb8..e83a9c0`):
+  - Timeline-Tab als Turn-Waterfall: Turn-Erkennung via global-adaptiver Gap-Heuristik
+    (`compute_turn_gap_threshold`/`assign_turns` in `_load.py`, median+3·MAD, Klammer 5–120s,
+    Fallback 30s); Server reicht `turn_index`+`turn_gap_ms` durch; `renderTimeline` mit echter
+    Zeitachse pro Turn + vertikalem Lane-Stapeln (`turnLayout` Node-getestet).
+  - Holistic-Review-Funde gefixt: Seam-Bug (git_branch/file_ext erreichten den Span nie wg.
+    Loader-Whitelist → in `_paired_span`/`_unpaired_pre_span` durchgereicht) + `esc()`-Quote-XSS
+    (Double-Quotes wurden nicht escaped → `title=`-Attribut-Ausbruch geschlossen).
+- **A-1 — Token/Kosten pro Span** (`5dfb28f`):
+  - `_load.py` `_cost()` liest optionale `input/output/cache_read_tokens` + `cost_usd`
+    (None-Defaults, bool-reject), durchgereicht in gepaarte/orphan/unpaired Spans; neue
+    `cost_breakdown(spans)` → Summen + `cost_by_tool`/`cost_by_agent` + `has_cost_data`.
+  - `server.py`: `cost`-Block im `spans_payload`. Dashboard: konditionale Σ-Kosten/Σ-Tokens-KPIs
+    + Kosten-pro-Tool-Panel (nur bei `has_cost_data`).
+  - `analysis/ingest_otlp.py` (NEU, stdlib-only): parst Claude-Code-OTLP-Metrics (console +
+    OTLP/JSON) → `usage_by_session.json`. Kosten nur **pro Session** (Metrics tragen keine
+    `tool_use_id`). Hot-Path/Hooks unberührt.
+- **B-3 — Run-Comparison Claude Code ↔ Codex** (`162436b`):
+  - `_load.py` `comparison(spans, key='agent'|'session_id')` aggregiert tool_calls, paired,
+    failures, retries, success_rate, total_duration_ms, Risk-Verteilung, mutating_count,
+    total_cost_usd. `server.py`: `comparison`-Block (by_agent + by_session).
+  - Dashboard: neuer Compare-Tab (umschaltbar Agent/Session), best/worst-Markierung pro Metrik;
+    reine Tabelle (kein Chart nötig), Re-Render ohne Refetch via `lastData`.
+- **B-6 — DuckDB-Ad-hoc-SQL-Layer** (`ce2890b`):
+  - `analysis/sql.py`: `query(sql, data_path)` (View `events`) + `query_spans(sql, data_path)`
+    (zusätzliche View `spans`, pre/post in SQL gepaart). DuckDB **lazy** importiert → Modul
+    crasht nie beim Import; fehlt duckdb, `is_available()`→False und CLI endet mit Exit 3 +
+    Installationshinweis. Pfad inline eingebettet aber SQL-escaped (`_sql_str`, Quote-Verdopplung
+    gegen Injection). Kern bleibt stdlib-only.
+- **Teil C — OTLP-Trace-Exporter** (`1d81831`):
+  - `analysis/otlp_export.py` (Library-Modul, stdlib-only): `build_resource_spans(spans)` mappt
+    gepaarte Spans → OTLP/JSON `resourceSpans` (gen_ai.*-konform, Trace = Session, Span =
+    Tool-Call, deterministische 32-/16-hex IDs, ok→UNSET / ok=False→ERROR); `export(spans,
+    endpoint=…)` POSTet optional an einen lokalen Collector (Default `:4318/v1/traces`),
+    Graceful-Fallback bei nicht erreichbarem Collector. Hot-Path unberührt.
+- **S-01 — Secret-Redaction erweitert** (`6e3190a`, TDD): Stripe-**Test**-Keys (`[sr]k_test_…`),
+  GitLab PAT (`glpat-…`), Google OAuth2 (`ya29.…`, auf `ya29.` verankert gegen Teilwort-FP);
+  rein additive Patterns im Hot-Path, exit-0-Garantie unangetastet.
+- **Verifikation (2026-06-05):** Suite selbst gefahren → **203 passed / 6 skipped**.
+  Test-Isolation snapshot-bewiesen (`data/events.jsonl`-Wachstum stammt nur vom live laufenden
+  Tracker-Hook auf eigene Tool-Calls, nicht aus Tests). Nur S-01 fasst den Hot-Path an
+  (additiv), die vier Feature-Commits sind durchgehend Cold-Path (`analysis/`).
+
 ## 2026-06-02
 - Projekt-Setup, Design-Doc + Plan.
 - Iteration 1 komplett: PreToolUse-Hook (`hook/track_tool_use.py`) mit Sanitizer

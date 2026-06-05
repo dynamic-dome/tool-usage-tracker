@@ -22,14 +22,41 @@ Siehe `install.md`.
 ## Live-Dashboard
 `python analysis/server.py` starten, dann im Browser `http://127.0.0.1:8770` öffnen
 (127.0.0.1, **nicht** localhost — Regel 16). Stdlib-`http.server`, an 127.0.0.1 gebunden.
-- Zwei Tabs: **Analytics** (Default; Top-Tools, Fehlerrate, Aktivität/Zeit, Pfad-Treemap +
-  Heat-Baum) und **Timeline** (Waterfall): Spans pro Session in **Turns** gruppiert
-  (Pause-Heuristik, adaptiver Schwellwert im Kopf angezeigt). Jeder Turn hat eine eigene
-  Zeitachse: x-Position = Offset ab Turn-Start, Breite ∝ Dauer; gleichzeitige Spans
-  gestapelt; gestrichelt = ungepaart.
+- Drei Tabs:
+  - **Analytics** (Default; Top-Tools, Fehlerrate, Aktivität/Zeit, Pfad-Treemap +
+    Heat-Baum). Sind Kosten-/Token-Daten vorhanden (siehe unten), erscheinen zusätzlich
+    Σ-Kosten/Σ-Tokens-KPIs und ein **Kosten-pro-Tool**-Panel — sonst bleiben sie ausgeblendet.
+  - **Timeline** (Waterfall): Spans pro Session in **Turns** gruppiert (Pause-Heuristik,
+    adaptiver Schwellwert im Kopf angezeigt). Jeder Turn hat eine eigene Zeitachse:
+    x-Position = Offset ab Turn-Start, Breite ∝ Dauer; gleichzeitige Spans gestapelt;
+    gestrichelt = ungepaart.
+  - **Compare** (B-3): Vergleichstabelle **pro Agent** oder **pro Session** (umschaltbar) —
+    Tool-Calls, Fehlversuche, Erfolgsrate, Gesamtdauer, Risk-Verteilung, mutierende Aktionen,
+    Gesamtkosten. Bester Wert je Metrik grün, schlechtester rot markiert.
 - **Refresh** ist manuell (Button) — kein Auto-Polling.
 - Filter im Header: `agent`, `project`, `since` (YYYY-MM-DD) und Checkbox `exclude_self`
   (blendet die eigenen Tracker-/Report-Aufrufe aus). Ctrl-C im Terminal stoppt den Server.
+
+## Optionale Add-ons (stdlib-only-Kern bleibt unberührt)
+Diese Module sind nachgelagert; sie laufen NIE im Hot-Path und der Kern braucht weiter
+nur die Stdlib.
+
+- **Kosten/Token pro Span (A-1):** Der Loader liest optionale Felder `input_tokens`,
+  `output_tokens`, `cache_read_tokens` und `cost_usd` aus den Events, falls vorhanden, und
+  speist daraus die Kosten-KPIs + das Compare-Tab. Fehlen die Felder, ist alles ausgeblendet.
+- **OTLP-Metrics einlesen (A-1):** `python analysis/ingest_otlp.py <otlp-metrics.jsonl> [out.json]`
+  parst Claude-Code-OTLP-Metrics (console- + OTLP/JSON-Format) zu `usage_by_session.json`
+  (Default-Output). Wichtig: OTLP-Metrics tragen nur `session.id`, **keine** `tool_use_id` —
+  Kosten sind daher nur **pro Session** zuordenbar, nicht pro Tool-Call.
+- **Ad-hoc-SQL via DuckDB (B-6):** `python analysis/sql.py "<SQL>" [data.jsonl]` — beliebiges
+  SQL gegen zwei Views: `events` (rohe Zeilen) und `spans` (in SQL gepaart). Window-Functions
+  (p50/p95 …) inklusive. Optionales Add-on: `pip install duckdb`; ohne DuckDB endet die CLI
+  sauber mit Exit 3 + Installationshinweis (kein Crash, Kern-Suite bleibt grün).
+- **OTLP-Trace-Export (Teil C):** `analysis/otlp_export.py` ist ein Library-Modul:
+  `build_resource_spans(spans)` mappt gepaarte Spans auf OTLP/JSON (gen_ai.*-konform, Trace =
+  Session, Span = Tool-Call, deterministische IDs); `export(spans, endpoint=…)` POSTet optional
+  an einen lokalen Collector (Default `http://127.0.0.1:4318/v1/traces`, z.B. Jaeger / Grafana
+  LGTM / OTel-Collector). Nicht erreichbarer Collector → `False`, kein Crash.
 
 ## Architektur / Felder / Sanitisierung
 Siehe `docs/ARCHITECTURE.md` und das Design-Doc
