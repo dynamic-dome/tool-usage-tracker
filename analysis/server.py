@@ -14,7 +14,7 @@ from urllib.parse import urlparse, parse_qs
 from _load import (load_events, pair_events, pairing_summary, success_rate_by,
                    duration_stats_by, path_activity, classification_breakdown,
                    compute_turn_gap_threshold, assign_turns, cost_breakdown,
-                   comparison, enrich_spans_with_tokens)
+                   comparison, enrich_spans_with_tokens, drift_breakdown)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA = ROOT / "data" / "events.jsonl"
@@ -98,6 +98,7 @@ def spans_payload(data_path, params):
             "by_agent": comparison(spans, key="agent"),
             "by_session": comparison(spans, key="session_id"),
         },
+        "drift": drift_breakdown(spans),
     }
 
 

@@ -1,4 +1,24 @@
 # CHANGELOG
+## 2026-06-06
+- **D-3 — Drift/Spend-Score pro Session** (Themen-Drift, TDD, Auswerte-Pfad, Hot-Path unberührt):
+  - `_load.py` `drift_breakdown(spans)`: pro Session ist das häufigste `(app, intent)` das
+    **dominante Thema** (On-Task); Drift = Anteil Tool-Calls abseits davon — sowohl nach Anzahl
+    (`drift_ratio`) als auch **kosten-gewichtet** (`spend_drift_ratio`, turn-dedupliziert wie
+    `cost_breakdown`). Mutierende Off-Task-Spans separat (`off_task_mutating`, gefährlichstes
+    Signal). Gemischte Turns zählen konservativ als On-Task (Off-Task-Spend wird nicht überschätzt).
+    Tiebreak deterministisch (Häufigkeit → Kosten → Alphabet).
+  - `_span_app_intent(span)` + `_TOOL_APP_INTENT`: leitet app/intent für NICHT-Bash/MCP-Tools ab
+    (`Read`/`Edit`/`Write`→`file`, `Grep`/`Glob`→`search`, `Task`/`Agent`→`agent`, `WebFetch`/
+    `WebSearch`→`web`). **Live-Befund** (2026-06-06): ohne diese Abbildung fielen ~64% der Spans
+    (Datei-Tools, `app=''`) aus der Drift-Analyse und das dominante Thema war fast immer
+    `local-cli/unknown`. Reiner Auswerte-Pfad — der Hook schreibt unverändert.
+  - `server.py`: `drift`-Block im `spans_payload` (pro Session). Dashboard: neue `full`-Karte
+    „Drift — Off-Task-Spend pro Session" (Tabelle, nach Spend-Drift sortiert, ≥5 klassifizierte
+    Spans; Drift ≥50% rot, ≤20% grün, mutierende Off-Task-Spans rot markiert). Versteckt, wenn
+    keine Session genug Daten hat.
+  - Quelle: Re-Analyse-Dossier `agent-tracking-reanalyse-2026-06.md` (D-3). IST-Stand-Claims des
+    Dossiers vorab ground-truth-verifiziert (DCO `trace_spans`-Schema real, 146 Zeilen).
+
 ## 2026-06-05
 - **JSONL-Rotation + Multi-File-Loader** (Task 2, TDD):
   - Hot-Path (`track_tool_use.py`): `events.jsonl` rotiert bei ≥ Schwelle (Default **5 MB**,

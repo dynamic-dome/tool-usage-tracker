@@ -574,3 +574,157 @@ def comparison(spans, key="agent"):
             "total_cost_usd": round(g["total_cost_usd"], 6),
         }
     return out
+
+
+def _turn_cost(span):
+    """Kosten eines Spans als (request_id_or_None, cost_usd_or_None) — Basis fuer
+    turn-deduplizierte Kostensummen (mehrere Calls eines Turns teilen die Summe)."""
+    c = span.get("cost_usd")
+    c = c if isinstance(c, (int, float)) and not isinstance(c, bool) else None
+    return span.get("request_id"), c
+
+
+# Ableitung app/intent fuer NICHT-Bash/MCP-Tools (nur Auswerte-Pfad, Hot-Path
+# unberuehrt). Ohne diese Abbildung fielen Read/Edit/Write/Grep/Task (~64% der
+# Spans, app='') komplett aus der Drift-Analyse — Live-Befund 2026-06-06.
+_TOOL_APP_INTENT = {
+    "Read": ("file", "read"),
+    "Edit": ("file", "write"),
+    "Write": ("file", "write"),
+    "NotebookEdit": ("file", "write"),
+    "Grep": ("search", "read"),
+    "Glob": ("search", "read"),
+    "Task": ("agent", "delegate"),
+    "Agent": ("agent", "delegate"),
+    "WebFetch": ("web", "read"),
+    "WebSearch": ("web", "read"),
+}
+
+
+def _span_app_intent(span):
+    """(app, intent) eines Spans fuer die Themen-Analyse. Bevorzugt die bereits
+    vorhandene Klassifizierung (Bash/MCP, vom Hook geschrieben); faellt sonst auf
+    eine tool_name-basierte Ableitung fuer Datei-/Such-/Agent-/Web-Tools zurueck.
+    Unbekanntes Tool ohne app -> (None, None) (zaehlt als unclassified)."""
+    app = span.get("app")
+    if app:
+        return app, (span.get("intent") or "")
+    return _TOOL_APP_INTENT.get(span.get("tool_name"), (None, None))
+
+
+def drift_breakdown(spans):
+    """D-3 — Themen-Drift pro Session: wieviel Arbeit floss abseits des
+    dominanten Themas ('Off-Task-Spend').
+
+    'On-Task' = die haeufigste (app, intent)-Kombination der Session (dominant).
+    Bei Gleichstand der Haeufigkeit entscheiden hoehere Kosten, dann Alphabet
+    (deterministisch). Spans OHNE app sind unklassifiziert und zaehlen weder on-
+    noch off-task (ehrlich getrennt ausgewiesen).
+
+    Pro Session:
+      dominant            "app/intent" des Haupt-Themas (oder None)
+      on_task_count       klassifizierte Spans im Haupt-Thema
+      off_task_count      klassifizierte Spans ausserhalb
+      unclassified_count  Spans ohne app
+      drift_ratio         off_task / (on_task + off_task), 0 wenn keine klass. Spans
+      total_cost_usd      turn-deduplizierte Gesamtkosten der Session
+      off_task_cost_usd   turn-deduplizierte Kosten der Off-Task-Turns
+      spend_drift_ratio   off_task_cost / total_cost (None wenn keine Kosten)
+      off_task_mutating   Anzahl mutierender Off-Task-Spans (gefaehrlichstes Signal)
+
+    Kosten sind turn-dedupliziert (ein request_id zaehlt einmal), konsistent mit
+    cost_breakdown. Ein Turn gilt als Off-Task, wenn MINDESTENS ein Off-Task-Span
+    zu ihm gehoert UND kein On-Task-Span (gemischte Turns -> On-Task, konservativ:
+    Off-Task-Spend wird nicht ueberschaetzt)."""
+    from collections import Counter, defaultdict
+
+    # Pass 1: pro Session die (app,intent)-Haeufigkeit + Kosten je Kombo sammeln.
+    by_sess = defaultdict(list)
+    for s in spans:
+        by_sess[s.get("session_id")].append(s)
+
+    out = {}
+    for sid, items in by_sess.items():
+        combo_count = Counter()
+        combo_cost = defaultdict(float)
+        for s in items:
+            app, intent = _span_app_intent(s)
+            if not app:
+                continue
+            combo = f"{app}/{intent or ''}"
+            combo_count[combo] += 1
+            _, c = _turn_cost(s)
+            if c is not None:
+                combo_cost[combo] += c
+
+        if not combo_count:
+            # Keine klassifizierten Spans -> nur unclassified.
+            out[sid] = {
+                "dominant": None, "on_task_count": 0, "off_task_count": 0,
+                "unclassified_count": len(items), "drift_ratio": 0.0,
+                "total_cost_usd": 0.0, "off_task_cost_usd": 0.0,
+                "spend_drift_ratio": None, "off_task_mutating": 0,
+            }
+            continue
+
+        # Dominantes Thema: max Haeufigkeit, dann Kosten, dann Alphabet.
+        dominant = max(combo_count,
+                       key=lambda c: (combo_count[c], combo_cost[c], c))
+
+        # Pass 2: on/off-task zaehlen + Turn-Zugehoerigkeit bestimmen.
+        on_task = off_task = unclassified = off_mutating = 0
+        # Turn -> hat_on_task, hat_off_task, cost (einmal je Turn)
+        turn_on = defaultdict(bool)
+        turn_off = defaultdict(bool)
+        turn_cost = {}
+        loose_total = 0.0      # Kosten von Spans ohne request_id (pro Span)
+        loose_off = 0.0
+        for s in items:
+            app, intent = _span_app_intent(s)
+            req, c = _turn_cost(s)
+            if not app:
+                unclassified += 1
+                # unklassifizierte Spans zaehlen NICHT in die Drift-Kosten.
+                continue
+            combo = f"{app}/{intent or ''}"
+            is_off = combo != dominant
+            if is_off:
+                off_task += 1
+                if s.get("mutating"):
+                    off_mutating += 1
+            else:
+                on_task += 1
+            if req:
+                if c is not None and req not in turn_cost:
+                    turn_cost[req] = c
+                if is_off:
+                    turn_off[req] = True
+                else:
+                    turn_on[req] = True
+            elif c is not None:
+                loose_total += c
+                if is_off:
+                    loose_off += c
+
+        # Turn-deduplizierte Kosten: ein Turn ist nur dann Off-Task, wenn er
+        # KEINEN On-Task-Span enthaelt (gemischt -> On-Task, konservativ).
+        total_cost = loose_total
+        off_cost = loose_off
+        for req, c in turn_cost.items():
+            total_cost += c
+            if turn_off[req] and not turn_on[req]:
+                off_cost += c
+
+        classified = on_task + off_task
+        out[sid] = {
+            "dominant": dominant,
+            "on_task_count": on_task,
+            "off_task_count": off_task,
+            "unclassified_count": unclassified,
+            "drift_ratio": (off_task / classified) if classified else 0.0,
+            "total_cost_usd": round(total_cost, 6),
+            "off_task_cost_usd": round(off_cost, 6),
+            "spend_drift_ratio": (off_cost / total_cost) if total_cost else None,
+            "off_task_mutating": off_mutating,
+        }
+    return out

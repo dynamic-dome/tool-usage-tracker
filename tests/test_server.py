@@ -42,6 +42,28 @@ def test_spans_payload_enriches_tokens_from_ccusage(tmp_path, monkeypatch):
     assert span["turn_tokens"] is True
 
 
+def test_spans_payload_exposes_drift(tmp_path):
+    """spans_payload liefert einen drift-Block pro Session (D-3)."""
+    p = _write(tmp_path, [
+        {"phase": "pre", "tool_name": "Read", "session_id": "s",
+         "tool_use_id": "t1", "ts_utc": "2026-06-04T10:00:00.000Z"},
+        {"phase": "post", "tool_name": "Read", "session_id": "s",
+         "tool_use_id": "t1", "ts_utc": "2026-06-04T10:00:01.000Z", "ok": True},
+        {"phase": "pre", "tool_name": "Read", "session_id": "s",
+         "tool_use_id": "t2", "ts_utc": "2026-06-04T10:00:02.000Z"},
+        {"phase": "post", "tool_name": "Read", "session_id": "s",
+         "tool_use_id": "t2", "ts_utc": "2026-06-04T10:00:03.000Z", "ok": True},
+        {"phase": "pre", "tool_name": "Bash", "session_id": "s", "app": "git",
+         "intent": "write", "tool_use_id": "t3", "ts_utc": "2026-06-04T10:00:04.000Z"},
+        {"phase": "post", "tool_name": "Bash", "session_id": "s",
+         "tool_use_id": "t3", "ts_utc": "2026-06-04T10:00:05.000Z", "ok": True},
+    ])
+    payload = srv.spans_payload(str(p), {})
+    assert "drift" in payload
+    assert payload["drift"]["s"]["dominant"] == "file/read"
+    assert payload["drift"]["s"]["off_task_count"] == 1
+
+
 def test_spans_payload_no_tokens_file_is_graceful(tmp_path, monkeypatch):
     """Ohne tokens_by_request.json bleibt alles wie bisher (kein Crash, keine
     Kostendaten)."""

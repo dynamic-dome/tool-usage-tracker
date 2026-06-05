@@ -85,6 +85,10 @@ canvas{max-height:300px}
     <div class="card"><h2>Risk-Verteilung</h2><canvas id="cRisk"></canvas><div class="muted" id="riskNote" style="margin-top:8px;font-size:12px"></div></div>
     <div class="card"><h2>App / Intent (mutating hervorgehoben)</h2><div class="tree" id="appTree"></div></div>
     <div class="card" id="costCard" style="display:none"><h2>Kosten &amp; Token pro Tool</h2><canvas id="cCost"></canvas><div class="muted" id="costNote" style="margin-top:8px;font-size:12px"></div></div>
+    <div class="card full" id="driftCard" style="display:none"><h2>Drift &mdash; Off-Task-Spend pro Session</h2>
+      <div class="muted" style="margin-bottom:8px;font-size:12px">Dominantes Thema = h&auml;ufigste app/intent der Session. Drift = Anteil Tool-Calls abseits davon; Spend-Drift kosten-gewichtet (turn-dedupliziert). Mut! = mutierende Off-Task-Aktionen.</div>
+      <div id="driftTable"></div>
+    </div>
     <div class="card full"><h2>Pfad-Aktivit&auml;t &mdash; Treemap</h2>
       <div class="muted" id="tmHint" style="margin-bottom:8px">Klick auf eine Kachel filtert den Heat-Baum darunter.</div>
       <div class="treemap" id="treemap"></div>
@@ -610,6 +614,49 @@ function renderCompare(data){
   }
 }
 
+function renderDrift(data){
+  // D-3: Off-Task-Spend pro Session. Karte bleibt versteckt, solange keine
+  // Session genug klassifizierte Spans hat (sonst leere/irrefuehrende Tabelle).
+  var card = $('driftCard'); var box = $('driftTable');
+  if (!card || !box) return;
+  var drift = (data && data.drift) ? data.drift : {};
+  // Nur Sessions mit >=5 klassifizierten Spans (on+off) zeigen.
+  var rows = Object.keys(drift).map(function(sid){
+    var d = drift[sid]; d._sid = sid;
+    d._classified = (d.on_task_count||0) + (d.off_task_count||0);
+    return d;
+  }).filter(function(d){ return d._classified >= 5; });
+  if (!rows.length){ card.style.display = 'none'; return; }
+  card.style.display = '';
+  // Nach Spend-Drift (fallback Drift-Ratio) absteigend — die teuersten Drifter oben.
+  rows.sort(function(a,b){
+    var sa = (a.spend_drift_ratio == null) ? a.drift_ratio : a.spend_drift_ratio;
+    var sb = (b.spend_drift_ratio == null) ? b.drift_ratio : b.spend_drift_ratio;
+    return sb - sa;
+  });
+  var pct = function(v){ return v == null ? '–' : (v*100).toFixed(0) + '%'; };
+  var html = '<table class="cmp"><thead><tr>' +
+    '<th>Session</th><th>Dominantes Thema</th><th>Drift</th><th>Spend-Drift</th>' +
+    '<th>Off-Task $</th><th>&#931; $</th><th>Mut!</th></tr></thead><tbody>';
+  rows.forEach(function(d){
+    // Drift-Hoehe einfaerben: >=50% rot (worst), <=20% gruen (best).
+    var sd = (d.spend_drift_ratio == null) ? d.drift_ratio : d.spend_drift_ratio;
+    var cls = 'num'; if (sd >= 0.5) cls += ' worst'; else if (sd <= 0.2) cls += ' best';
+    var mutCls = (d.off_task_mutating > 0) ? 'num worst' : 'num';
+    html += '<tr>' +
+      '<td>' + esc(d._sid.slice(0,8)) + '</td>' +
+      '<td>' + esc(d.dominant || '–') + '</td>' +
+      '<td class="num">' + pct(d.drift_ratio) + '</td>' +
+      '<td class="' + cls + '">' + pct(d.spend_drift_ratio) + '</td>' +
+      '<td class="num">' + fmtUsd(d.off_task_cost_usd||0) + '</td>' +
+      '<td class="num">' + fmtUsd(d.total_cost_usd||0) + '</td>' +
+      '<td class="' + mutCls + '">' + (d.off_task_mutating||0) + '</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table>';
+  box.innerHTML = html;
+}
+
 function renderAll(data){
   lastData = data;
   renderFilters(data);
@@ -620,6 +667,7 @@ function renderAll(data){
   renderRisk(data);
   renderAppTree(data);
   renderCost(data);
+  renderDrift(data);
   renderTreemap(data);
   renderTree(data);
   renderTimeline(data);
