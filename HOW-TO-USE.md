@@ -18,6 +18,14 @@ Siehe `install.md`.
 - CLI: `python analysis/report.py` (Flags: --agent --project --since --exclude-self --data)
 - HTML (statisch): `python analysis/dashboard.py` → öffnet `dashboard.html` (auch --exclude-self)
 - Live-Server (interaktiv): `python analysis/server.py` (Flags: --data, --port; Default-Port 8770)
+- Quality-Signal (C5-Kopplung agentic-os): `python -X utf8 analysis/quality_signal.py
+  [--project P] [--since D] [--limit N] [--top N] [--out DATEI]` — Tool-Fehlerrate pro
+  Session als JSON-Vertrag (schema_v 1: `overall` + `sessions` mit tool_calls/failures/
+  success_rate/top_failing_tools/mutating_failures; Zählbasis nur gepaarte Spans mit
+  bekanntem ok). Konsument: agentic-os `quality-gate` ruft das Skript auf und wertet
+  success_rate/failures der jüngsten Session(s) als Quality-Signal.
+  VORAUSSETZUNG: der `PostToolUseFailure`-Hook in settings.json (seit 2026-06-11) —
+  PostToolUse feuert nur bei Erfolg; ohne den Failure-Hook ist die Rate konstant 1.0.
 
 ## Live-Dashboard
 `python analysis/server.py` starten, dann im Browser `http://127.0.0.1:8770` öffnen

@@ -1,4 +1,23 @@
 # CHANGELOG
+## 2026-06-11
+- **Quality-Signal-Export (C5-Kopplung Tracker x agentic-os)** (TDD, Cold-Path):
+  - `analysis/quality_signal.py` (NEU): Tool-Fehlerrate pro Session als JSON-Vertrag
+    (schema_v 1, `overall` + `sessions` mit tool_calls/failures/success_rate/
+    top_failing_tools/mutating_failures). Zaehlbasis ehrlich: nur gepaarte Spans mit
+    bekanntem ok; `--limit` kuerzt nur die Liste, overall bleibt vollstaendig.
+    Erster Konsument: agentic-os `quality-gate` (Anbindung dort noch offen).
+  - **Live-Befund + Fix: Failure-Erkennung war komplett tot** — 15.132 Calls, 0 Failures.
+    Root Cause (empirisch + Doku-verifiziert): `PostToolUse` feuert NUR bei erfolgreichen
+    Tool-Calls; Fehlschlaege feuern das separate Event `PostToolUseFailure`, das nicht
+    registriert war. Fix: Failure-Event in `~/.claude/settings.json` auf denselben
+    `track_tool_post.py` registriert (greift ab der naechsten Session).
+  - `hook/track_tool_post.py` gehaertet: im realen Failure-Payload liegen
+    exit_code/stderr/is_error TOP-LEVEL und `tool_response` ist ein STRING —
+    `_derive_ok_and_error` liest jetzt beide Ebenen (Result-Dict hat Vorrang) und
+    nutzt die String-Response als Fehlertext. 3 neue Payload-Shape-Tests.
+  - Suite 241 -> 254 passed (+10 quality_signal, +3 post-hook), events.jsonl
+    snapshot-bewiesen unberuehrt.
+
 ## 2026-06-06
 - **D-3 — Drift/Spend-Score pro Session** (Themen-Drift, TDD, Auswerte-Pfad, Hot-Path unberührt):
   - `_load.py` `drift_breakdown(spans)`: pro Session ist das häufigste `(app, intent)` das

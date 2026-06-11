@@ -25,8 +25,12 @@ def _derive_ok_and_error(raw: dict):
     teils undokumentiert (uneinig, ob Bash exit_code mitliefert), deshalb mehrere
     Fehlersignale prüfen statt auf ein einziges Feld zu setzen."""
     event = str(raw.get("hook_event_name", "PostToolUse"))
-    # Result-Dict: tool_response primär, dann tool_output, dann tool_error.
-    result = raw.get("tool_response")
+    # Result: tool_response primär, dann tool_output, dann tool_error.
+    # Im realen PostToolUseFailure-Payload (Live-Befund + Doku 2026-06-11) ist
+    # tool_response ein STRING und exit_code/stderr/is_error liegen TOP-LEVEL
+    # im raw-Event — beide Ebenen lesen, Result-Dict hat Vorrang.
+    raw_result = raw.get("tool_response")
+    result = raw_result
     if not isinstance(result, dict):
         result = raw.get("tool_output")
     if not isinstance(result, dict):
@@ -34,9 +38,13 @@ def _derive_ok_and_error(raw: dict):
     if not isinstance(result, dict):
         result = {}
 
-    exit_code = result.get("exit_code")
-    is_error = bool(result.get("is_error"))
-    interrupted = bool(result.get("interrupted"))
+    def _field(key):
+        value = result.get(key)
+        return value if value is not None else raw.get(key)
+
+    exit_code = _field("exit_code")
+    is_error = bool(_field("is_error"))
+    interrupted = bool(_field("interrupted"))
 
     is_fail = (
         event.endswith("Failure")
@@ -47,10 +55,12 @@ def _derive_ok_and_error(raw: dict):
     if not is_fail:
         return True, ""
 
-    # Fehlertext-Präzedenz: stderr > text(bei is_error) > generisch.
-    raw_err = str(result.get("stderr") or "")
-    if not raw_err and is_error:
+    # Fehlertext-Präzedenz: stderr > text/String-Response (bei Fehler) > exit_code > generisch.
+    raw_err = str(_field("stderr") or "")
+    if not raw_err and (is_error or event.endswith("Failure")):
         raw_err = str(result.get("text") or "")
+        if not raw_err and isinstance(raw_result, str):
+            raw_err = raw_result
     if not raw_err:
         if isinstance(exit_code, int) and not isinstance(exit_code, bool):
             raw_err = f"exit_code={exit_code}"

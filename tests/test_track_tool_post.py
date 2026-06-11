@@ -128,3 +128,44 @@ def test_main_broken_stdin_exits_zero(tmp_path):
     target = tmp_path / "ev.jsonl"
     r = _run_hook("not json {{{", {"TOOL_TRACKER_DATA": str(target)})
     assert r.returncode == 0
+
+
+def test_build_post_event_failure_real_posttoolusefailure_shape():
+    """Reales PostToolUseFailure-Payload (Doku + Live-Befund 2026-06-11):
+    exit_code/stderr/is_error liegen TOP-LEVEL, tool_response ist ein STRING.
+    Vorher fiel der Fehlertext auf generisches 'error' zurueck."""
+    raw = {"session_id": "s1", "tool_name": "Bash",
+           "hook_event_name": "PostToolUseFailure",
+           "tool_input": {"command": "exit 3"},
+           "tool_response": "command failed",
+           "exit_code": 3, "stderr": "boom", "is_error": True}
+    ev = post.build_post_event(raw)
+    assert ev["ok"] is False
+    assert "boom" in ev["error"]
+
+
+def test_build_post_event_failure_top_level_exit_code_only():
+    # Failure-Payload ohne stderr: String-Response ist der Fehlertext;
+    # ohne jede Text-Quelle dient exit_code top-level als Fallback.
+    raw = {"session_id": "s1", "tool_name": "Bash",
+           "hook_event_name": "PostToolUseFailure",
+           "tool_response": "failed", "exit_code": 7}
+    ev = post.build_post_event(raw)
+    assert ev["ok"] is False
+    assert "failed" in ev["error"]
+
+    bare = {"session_id": "s1", "tool_name": "Bash",
+            "hook_event_name": "PostToolUseFailure", "exit_code": 7}
+    ev2 = post.build_post_event(bare)
+    assert ev2["ok"] is False
+    assert "exit_code=7" in ev2["error"]
+
+
+def test_build_post_event_string_tool_response_with_top_level_is_error():
+    # is_error top-level + String-Response: Fehlertext aus dem String ziehen
+    raw = {"session_id": "s1", "tool_name": "Edit",
+           "hook_event_name": "PostToolUseFailure",
+           "tool_response": "File has not been read yet", "is_error": True}
+    ev = post.build_post_event(raw)
+    assert ev["ok"] is False
+    assert "File has not been read" in ev["error"]
