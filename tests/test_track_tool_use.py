@@ -239,6 +239,16 @@ def test_summary_codex_apply_patch_uses_command_prefix():
     assert len(s) <= track.MAX_LEN
 
 
+def test_summary_skill_uses_skill_name():
+    s = track.build_summary("Skill", {"skill": "frontend-design:frontend-design",
+                                       "args": "irrelevant"})
+    assert s == "frontend-design:frontend-design"
+
+
+def test_summary_skill_missing_name_empty():
+    assert track.build_summary("Skill", {"args": "x"}) == ""
+
+
 def test_summary_unknown_tool_empty():
     assert track.build_summary("SomethingNew", {"weird": "data"}) == ""
 

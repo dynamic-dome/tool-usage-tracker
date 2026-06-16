@@ -76,6 +76,10 @@ def build_summary(tool_name: str, tool_input: dict) -> str:
         return clip(redact(str(tool_input.get("pattern", ""))))
     if tool_name in ("Task", "Agent"):
         return clip(redact(str(tool_input.get("description", ""))))
+    if tool_name == "Skill":
+        # Skill-Tool faengt auch Slash-Commands; der Skill-Name ist das Signal
+        # fuer die Nutzungs-Analyse (behalten/deinstallieren, global vs lokal).
+        return clip(str(tool_input.get("skill", "")))
     if tool_name == "apply_patch":
         return clip(redact(str(tool_input.get("command", ""))))
     if tool_name == "WebFetch":
