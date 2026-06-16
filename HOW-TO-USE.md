@@ -16,6 +16,13 @@ Siehe `install.md`.
 
 ## Auswertung
 - CLI: `python analysis/report.py` (Flags: --agent --project --since --exclude-self --data)
+- **Skill-Nutzung** (welche Skills brauche ich ständig, global vs. lokal-projektspezifisch):
+  `python analysis/skill_usage.py` (Flags: --since, --data, --min N) — pro Skill Aufrufe,
+  Projekt-Streuung, letzte Nutzung + global-vs-lokal-Heuristik (≥2 Projekte → global-Kandidat,
+  1 → lokal). Basis: seit 2026-06-16 trägt das Pre-Event eines `Skill`-Tool-Calls den
+  Skill-Namen im `summary` (`build_summary`-Skill-Fall). **Nie** genutzte Skills erscheinen
+  per Definition nicht — nach der Beobachtungsphase gegen die installierte Skill-Liste
+  gegenchecken (Deinstall-Kandidaten).
 - HTML (statisch): `python analysis/dashboard.py` → öffnet `dashboard.html` (auch --exclude-self)
 - Live-Server (interaktiv): `python analysis/server.py` (Flags: --data, --port; Default-Port 8770)
 - Quality-Signal (C5-Kopplung agentic-os): `python -X utf8 analysis/quality_signal.py
