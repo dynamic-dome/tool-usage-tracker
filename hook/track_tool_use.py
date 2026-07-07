@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -311,6 +312,34 @@ def _rotate_if_needed(path: Path, limit: int) -> None:
         pass  # Rotation ist best-effort; Append im Caller faengt es auf
 
 
+def _latency_path() -> Path:
+    """LAZY: gleiche Handhabung wie _events_path, eigenes JSONL fuer die
+    Hook-Eigenlaufzeit (B3/A3 — Frage: Prozess-Spawn pro Tool-Call teuer?)."""
+    override = os.environ.get("TOOL_TRACKER_LATENCY")
+    if override:
+        return Path(override)
+    return Path(__file__).resolve().parents[1] / "data" / "hook_latency.jsonl"
+
+
+def log_latency(hook: str, tool_name: str, duration_ms: float) -> None:
+    """Miss-Wrapper, reines Anhaengen. Fail-safe wie der Rest des Hot-Path —
+    darf die eigentliche Tracking-Arbeit nie stoeren oder verzoegern."""
+    try:
+        rec = {
+            "ts_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.")
+                      + f"{datetime.now(timezone.utc).microsecond // 1000:03d}Z",
+            "hook": hook,
+            "tool_name": tool_name or "unknown",
+            "duration_ms": round(duration_ms, 3),
+        }
+        path = _latency_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 AGENT = "claude-code"
 SCHEMA_V = 2
 
@@ -368,9 +397,13 @@ def build_event(raw: dict) -> dict:
 
 
 def main() -> int:
+    t0 = time.perf_counter()
+    tool_name = "unknown"
     try:
         data = sys.stdin.read()
         raw = json.loads(data) if data.strip() else {}
+        if isinstance(raw, dict):
+            tool_name = raw.get("tool_name") or "unknown"
         ev = build_event(raw)
         path = _events_path()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -379,6 +412,8 @@ def main() -> int:
             f.write(json.dumps(ev, ensure_ascii=False) + "\n")
     except Exception:
         pass  # Tracking darf NIE die Arbeit stören
+    finally:
+        log_latency("pre", tool_name, (time.perf_counter() - t0) * 1000)
     return 0
 
 

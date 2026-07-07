@@ -598,3 +598,65 @@ def test_main_appends_not_overwrites(tmp_path):
     _run_hook(raw, {"TOOL_TRACKER_DATA": str(target)})
     _run_hook(raw, {"TOOL_TRACKER_DATA": str(target)})
     assert len(target.read_text(encoding="utf-8").strip().splitlines()) == 2
+
+
+# ---- B3: Hook-Latenz-Messung (A3 — Prozess-Spawn-Overhead pro Tool-Call) ----
+
+def test_latency_path_uses_env_override(tmp_path, monkeypatch):
+    target = tmp_path / "lat.jsonl"
+    monkeypatch.setenv("TOOL_TRACKER_LATENCY", str(target))
+    assert track._latency_path() == target
+
+
+def test_latency_path_is_lazy(tmp_path, monkeypatch):
+    monkeypatch.setenv("TOOL_TRACKER_LATENCY", str(tmp_path / "a.jsonl"))
+    first = track._latency_path()
+    monkeypatch.setenv("TOOL_TRACKER_LATENCY", str(tmp_path / "b.jsonl"))
+    second = track._latency_path()
+    assert first != second  # frisch gelesen, nicht eingefroren
+
+
+def test_log_latency_appends_valid_jsonl(tmp_path, monkeypatch):
+    target = tmp_path / "lat.jsonl"
+    monkeypatch.setenv("TOOL_TRACKER_LATENCY", str(target))
+    track.log_latency("pre", "Bash", 12.345)
+    rec = json.loads(target.read_text(encoding="utf-8").strip())
+    assert rec["hook"] == "pre"
+    assert rec["tool_name"] == "Bash"
+    assert rec["duration_ms"] == 12.345
+    assert "ts_utc" in rec
+
+
+def test_log_latency_defaults_unknown_tool_name(tmp_path, monkeypatch):
+    target = tmp_path / "lat.jsonl"
+    monkeypatch.setenv("TOOL_TRACKER_LATENCY", str(target))
+    track.log_latency("pre", "", 1.0)
+    rec = json.loads(target.read_text(encoding="utf-8").strip())
+    assert rec["tool_name"] == "unknown"
+
+
+def test_main_also_writes_latency_record(tmp_path):
+    events = tmp_path / "ev.jsonl"
+    latency = tmp_path / "lat.jsonl"
+    raw = json.dumps({"session_id": "s", "cwd": r"C:\x\Proj",
+                      "tool_name": "Read", "tool_input": {"file_path": r"C:\x\Proj\a.py"},
+                      "hook_event_name": "PreToolUse"})
+    r = _run_hook(raw, {"TOOL_TRACKER_DATA": str(events),
+                        "TOOL_TRACKER_LATENCY": str(latency)})
+    assert r.returncode == 0
+    rec = json.loads(latency.read_text(encoding="utf-8").strip())
+    assert rec["hook"] == "pre"
+    assert rec["tool_name"] == "Read"
+    assert rec["duration_ms"] >= 0
+
+
+def test_main_broken_stdin_still_logs_latency(tmp_path):
+    # Latenz-Messung ist unabhaengig vom Erfolg des eigentlichen Trackings —
+    # auch bei kaputtem stdin muss log_latency laufen (finally-Block).
+    latency = tmp_path / "lat.jsonl"
+    r = _run_hook("not json {{{", {"TOOL_TRACKER_DATA": str(tmp_path / "ev.jsonl"),
+                                    "TOOL_TRACKER_LATENCY": str(latency)})
+    assert r.returncode == 0
+    rec = json.loads(latency.read_text(encoding="utf-8").strip())
+    assert rec["hook"] == "pre"
+    assert rec["tool_name"] == "unknown"

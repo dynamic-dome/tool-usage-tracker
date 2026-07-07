@@ -6,6 +6,7 @@ track_tool_use.py."""
 import importlib.util
 import json
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -93,9 +94,13 @@ def build_post_event(raw: dict) -> dict:
 
 
 def main() -> int:
+    t0 = time.perf_counter()
+    tool_name = "unknown"
     try:
         data = sys.stdin.read()
         raw = json.loads(data) if data.strip() else {}
+        if isinstance(raw, dict):
+            tool_name = raw.get("tool_name") or "unknown"
         ev = build_post_event(raw)
         path = _pre._events_path()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -103,6 +108,8 @@ def main() -> int:
             f.write(json.dumps(ev, ensure_ascii=False) + "\n")
     except Exception:
         pass  # Tracking darf NIE die Arbeit stören
+    finally:
+        _pre.log_latency("post", tool_name, (time.perf_counter() - t0) * 1000)
     return 0
 
 

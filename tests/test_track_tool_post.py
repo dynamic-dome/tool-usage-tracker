@@ -130,6 +130,33 @@ def test_main_broken_stdin_exits_zero(tmp_path):
     assert r.returncode == 0
 
 
+# ---- B3: Hook-Latenz-Messung (post-Hook loggt ueber _pre.log_latency) ----
+
+def test_main_also_writes_latency_record(tmp_path):
+    events = tmp_path / "ev.jsonl"
+    latency = tmp_path / "lat.jsonl"
+    raw = json.dumps({"session_id": "s", "tool_name": "Read",
+                      "hook_event_name": "PostToolUse",
+                      "tool_response": {"exit_code": 0}})
+    r = _run_hook(raw, {"TOOL_TRACKER_DATA": str(events),
+                        "TOOL_TRACKER_LATENCY": str(latency)})
+    assert r.returncode == 0
+    rec = json.loads(latency.read_text(encoding="utf-8").strip())
+    assert rec["hook"] == "post"
+    assert rec["tool_name"] == "Read"
+    assert rec["duration_ms"] >= 0
+
+
+def test_main_broken_stdin_still_logs_latency(tmp_path):
+    latency = tmp_path / "lat.jsonl"
+    r = _run_hook("not json {{{", {"TOOL_TRACKER_DATA": str(tmp_path / "ev.jsonl"),
+                                    "TOOL_TRACKER_LATENCY": str(latency)})
+    assert r.returncode == 0
+    rec = json.loads(latency.read_text(encoding="utf-8").strip())
+    assert rec["hook"] == "post"
+    assert rec["tool_name"] == "unknown"
+
+
 def test_build_post_event_failure_real_posttoolusefailure_shape():
     """Reales PostToolUseFailure-Payload (Doku + Live-Befund 2026-06-11):
     exit_code/stderr/is_error liegen TOP-LEVEL, tool_response ist ein STRING.
