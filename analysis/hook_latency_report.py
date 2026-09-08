@@ -11,19 +11,31 @@ from pathlib import Path
 DEFAULT = Path(__file__).resolve().parents[1] / "data" / "hook_latency.jsonl"
 
 
+def _record_files(path: Path):
+    """Rotierte Teile hook_latency.N.jsonl (aelteste zuerst), dann die aktive Datei."""
+    parts = []
+    for cand in path.parent.glob(f"{path.stem}.*{path.suffix}"):
+        mid = cand.name[len(path.stem) + 1: -len(path.suffix)]
+        if mid.isdigit():
+            parts.append((int(mid), cand))
+    files = [c for _, c in sorted(parts)]
+    if path.exists():
+        files.append(path)
+    return files
+
+
 def load_records(path: Path):
-    if not path.exists():
-        return []
     out = []
-    with path.open(encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
+    for file in _record_files(Path(path)):
+        with file.open(encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    out.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
     return out
 
 

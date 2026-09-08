@@ -1,4 +1,12 @@
 # CHANGELOG
+## 2026-09-08 — Latency-JSONL rotiert
+
+- `log_latency()` rotiert `data/hook_latency.jsonl` jetzt mit derselben Schwelle
+  (`TOOL_TRACKER_MAX_BYTES`, Default 5 MB) und demselben Teil-Schema wie
+  `events.jsonl` (`hook_latency.N.jsonl`). Befund: 26 MB unrotiert nach 2 Monaten.
+- `hook_latency_report.load_records()` liest rotierte Teile (älteste zuerst) vor
+  der aktiven Datei. 2 neue Tests, Suite 276 grün.
+
 ## 2026-06-11
 - **Quality-Signal-Export (C5-Kopplung Tracker x agentic-os)** (TDD, Cold-Path):
   - `analysis/quality_signal.py` (NEU): Tool-Fehlerrate pro Session als JSON-Vertrag

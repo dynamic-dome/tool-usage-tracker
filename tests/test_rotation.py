@@ -149,3 +149,21 @@ def test_load_events_tail_none_returns_all(tmp_path):
     _write_jsonl(active, [{"tool_name": f"e{i}", "ts_utc": str(i)} for i in range(4)])
     out = _load.load_events(active)
     assert len(out) == 4
+
+
+# --- Latency-JSONL rotiert wie events.jsonl ---------------------------------
+
+def test_latency_log_rotates_when_threshold_exceeded(tmp_path, monkeypatch):
+    """hook_latency.jsonl waechst pro Tool-Call unbegrenzt, wenn es nicht wie
+    events.jsonl rotiert (Live-Befund 2026-09-08: 26 MB). Gleiche Schwelle,
+    gleiches Teil-Datei-Schema (hook_latency.1.jsonl)."""
+    lat = tmp_path / "hook_latency.jsonl"
+    monkeypatch.setenv("TOOL_TRACKER_LATENCY", str(lat))
+    monkeypatch.setenv("TOOL_TRACKER_MAX_BYTES", "200")
+    for i in range(10):
+        track.log_latency("pre", f"Tool{i}", 1.5)
+    parts = sorted(tmp_path.glob("hook_latency.*.jsonl"))
+    assert parts, "keine rotierte Latency-Teildatei entstanden"
+    assert lat.exists() and lat.stat().st_size < 200
+    total = sum(len(p.read_text(encoding="utf-8").splitlines()) for p in parts + [lat])
+    assert total == 10

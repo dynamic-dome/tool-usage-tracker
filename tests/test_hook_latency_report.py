@@ -46,3 +46,14 @@ def test_load_records_skips_malformed_lines(tmp_path):
 
 def test_load_records_missing_file_returns_empty(tmp_path):
     assert report.load_records(tmp_path / "nope.jsonl") == []
+
+
+def test_load_records_merges_rotated_parts(tmp_path):
+    """Nach Rotation liegen Records in hook_latency.N.jsonl; der Report muss sie
+    chronologisch (aelteste Teile zuerst) vor der aktiven Datei einlesen."""
+    (tmp_path / "hook_latency.1.jsonl").write_text('{"hook":"pre","duration_ms":1}\n', encoding="utf-8")
+    (tmp_path / "hook_latency.2.jsonl").write_text('{"hook":"pre","duration_ms":2}\n', encoding="utf-8")
+    active = tmp_path / "hook_latency.jsonl"
+    active.write_text('{"hook":"pre","duration_ms":3}\n', encoding="utf-8")
+    recs = report.load_records(active)
+    assert [r["duration_ms"] for r in recs] == [1, 2, 3]

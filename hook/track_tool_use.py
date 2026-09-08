@@ -334,6 +334,7 @@ def log_latency(hook: str, tool_name: str, duration_ms: float) -> None:
         }
         path = _latency_path()
         path.parent.mkdir(parents=True, exist_ok=True)
+        _rotate_if_needed(path, _max_bytes())
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     except Exception:
