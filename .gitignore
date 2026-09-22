@@ -18,3 +18,7 @@ node_modules/
 # Playwright/Dashboard-Screenshots (lokale Test-Artefakte)
 .playwright-mcp/
 dashboard-*.png
+
+# Agent-Memory (lokale Laufzeitdaten, nie versionieren) — Owner-Entscheid 2026-09-22
+.agent-memory/
+.openclaw/
