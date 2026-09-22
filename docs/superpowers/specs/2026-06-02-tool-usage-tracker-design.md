@@ -2,7 +2,7 @@
 
 **Datum:** 2026-06-02
 **Status:** Approved (Brainstorming abgeschlossen)
-**Ort:** `C:\Users\domes\AI\Hooks-bau\tool-usage-tracker\`
+**Ort:** `C:\Users\<user>\AI\Hooks-bau\tool-usage-tracker\`
 
 ## 1. Zweck
 

@@ -68,7 +68,7 @@ Plausible Ursachen:
 
 - `codex exec` laedt projektlokale Hook-Dateien anders oder gar nicht.
 - Pre/PostToolUse-Coverage ist in Codex noch nicht fuer alle Toolpfade gleich.
-- Project-/user-level Hook-Discovery hat bekannte Kanten; in der lokalen `~/.codex/config.toml` war kein Trust-State fuer `C:\Users\domes\AI\Hooks-bau\tool-usage-tracker\.codex\hooks.json` sichtbar.
+- Project-/user-level Hook-Discovery hat bekannte Kanten; in der lokalen `~/.codex/config.toml` war kein Trust-State fuer `C:\Users\<user>\AI\Hooks-bau\tool-usage-tracker\.codex\hooks.json` sichtbar.
 
 Externe Primaerquellen, die diese Risikoklasse stuetzen:
 

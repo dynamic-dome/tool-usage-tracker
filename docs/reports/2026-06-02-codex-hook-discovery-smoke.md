@@ -7,7 +7,7 @@ echten Codex-Toolcall ausgefuehrt wird.
 
 ## Vorbedingungen
 
-- Projekt: `C:\Users\domes\AI\Hooks-bau\tool-usage-tracker`
+- Projekt: `C:\Users\<user>\AI\Hooks-bau\tool-usage-tracker`
 - Branch: `main`
 - Codex CLI: `codex-cli 0.136.0`
 - `.codex/hooks.json` ist JSON-valide.
@@ -41,7 +41,7 @@ Codex fuehrte den Toolcall aus:
 ```text
 Path
 ----
-C:\Users\domes\AI\Hooks-bau\tool-usage-tracker
+C:\Users\<user>\AI\Hooks-bau\tool-usage-tracker
 ```
 
 Am Ende des Laufs stand:

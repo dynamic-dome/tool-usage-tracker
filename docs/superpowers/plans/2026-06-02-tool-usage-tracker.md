@@ -354,7 +354,7 @@ import os
 
 
 def test_derive_project_basename():
-    assert track.derive_project(r"C:\Users\domes\AI\Hooks-bau") == "Hooks-bau"
+    assert track.derive_project(r"C:\Users\<user>\AI\Hooks-bau") == "Hooks-bau"
 
 
 def test_derive_project_fallback_unknown():

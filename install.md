@@ -26,7 +26,7 @@ Wichtige Unterschiede zu Claude Code:
 Echter Smoke nach Trust/Neustart:
 
 ```powershell
-cd C:\Users\domes\AI\Hooks-bau\tool-usage-tracker
+cd C:\Users\<user>\AI\Hooks-bau\tool-usage-tracker
 codex exec --dangerously-bypass-hook-trust "run a harmless pwd command"
 Get-Content .\data\events.jsonl -Tail 4
 ```
