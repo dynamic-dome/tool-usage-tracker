@@ -10,13 +10,50 @@ Lizenz des Gesamtprojekts.
 - Datei: `vendor/chart.umd.min.js`
 - Projekt: <https://www.chartjs.org/>
 - Upstream: <https://github.com/chartjs/Chart.js/tree/v4.4.1>
+- Lizenzquelle des gepinnten Tags:
+  <https://github.com/chartjs/Chart.js/blob/v4.4.1/LICENSE.md>
 - Im Distributionsheader genannt: Copyright 2023 Chart.js Contributors,
   veröffentlicht unter der MIT License.
-- Die gebündelte Distribution nennt außerdem `@kurkle/color` 0.3.2 mit MIT-Hinweis.
 
-**Vorschlag vor einer formalen Veröffentlichung:** Die unveränderte MIT-Lizenz aus
-dem verifizierten Chart.js-Tag `v4.4.1` zusammen mit diesem Hinweis ausliefern und
-bei einem Vendor-Update Version, Header und Lizenz erneut abgleichen.
+Vollständiger Lizenztext aus dem verifizierten Tag `v4.4.1`:
+
+```text
+The MIT License (MIT)
+
+Copyright (c) 2014-2022 Chart.js Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### @kurkle/color 0.3.2
+
+Die gebündelte Chart.js-Distribution enthält `@kurkle/color` 0.3.2 und nennt
+diese Version samt Copyright- und MIT-Hinweis im Distributionsheader.
+
+- Upstream: <https://github.com/kurkle/color/tree/v0.3.2>
+- Lizenzquelle des gepinnten Tags:
+  <https://github.com/kurkle/color/blob/v0.3.2/LICENSE.md>
+
+Vollständiger Lizenztext aus dem verifizierten Tag `v0.3.2`:
+
+```text
+The MIT License (MIT)
+
+Copyright (c) 2018-2021 Jukka Kurkela
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+Bei einem Vendor-Update müssen Version, Distributionsheader und beide
+Upstream-Lizenztexte erneut abgeglichen werden.
 
 ## Entwicklungsabhängigkeiten, nicht gebündelt
 
@@ -49,8 +86,10 @@ Versionen und Lizenztexte verifiziert und zusammen mit den erforderlichen Hinwei
 übernommen werden. Für eine rein lokale/offline Ausführung müssen die Remote-Fonts
 entfernt oder durch lokal geprüfte Ressourcen ersetzt werden.
 
-## Offene Owner-Entscheidung
+## Lizenz des eigenen Codes
 
-Das Root-Projekt hat keine `LICENSE`-Datei. `package.json` nennt derzeit `ISC`,
-doch die gewünschte Projektlizenz und die Konsistenz der Paketmetadaten müssen vom
-Owner entschieden werden. Diese Datei fügt dem eigenen Code keine Lizenz hinzu.
+Die Root-[LICENSE](LICENSE) lizenziert den eigenen Code ab ihrer Einführung unter
+MIT. Diese Drittanbieterhinweise übertragen die Copyrights von Chart.js,
+`@kurkle/color` oder anderen Drittbestandteilen nicht auf den Projekteigentümer.
+Bereits veröffentlichte Versionen, deren Paketmetadaten ISC auswiesen, werden durch
+den Wechsel nicht rückwirkend unter MIT gestellt.

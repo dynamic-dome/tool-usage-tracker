@@ -116,14 +116,14 @@ Ein Teil der Tests enthält bewusst synthetische Zeichenfolgen, die wie bekannte
 Credential-Formate aussehen, um die Redaktion zu belegen. Herkunft und sichere
 Scanner-Behandlung stehen in [SECURITY.md](SECURITY.md).
 
-## Drittanbieter und Lizenzstatus
+## Drittanbieter und Lizenz
 
 Das Dashboard bündelt Chart.js und referenziert Google Fonts als Remote-Ressource;
 Entwicklungswerkzeuge stehen in `package-lock.json`. Details und konkrete
-Notice-Vorschläge stehen in
+Lizenztexte und Herkunftsnachweise stehen in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Für das Repository liegt derzeit keine Root-Lizenzdatei vor. Das `license`-Feld in
-`package.json` nennt zwar `ISC`, ersetzt aber keine eindeutige, vom Owner bestätigte
-Lizenzdatei. Bis zur Lizenzentscheidung sollten Dritte den Code nicht als zur
-Weiterverwendung freigegeben behandeln.
+Der eigene Code steht ab der Einführung der Root-[LICENSE](LICENSE) unter der
+MIT-Lizenz. Bereits veröffentlichte Versionen, deren Paketmetadaten ISC auswiesen,
+werden dadurch nicht rückwirkend unter MIT gestellt. Für gebündelte oder remote
+referenzierte Drittbestandteile gelten die jeweils dokumentierten Bedingungen.

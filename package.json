@@ -22,7 +22,7 @@
     "claude-code"
   ],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/dynamic-dome/tool-usage-tracker/issues"
