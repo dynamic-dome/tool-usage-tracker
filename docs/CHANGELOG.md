@@ -1,4 +1,18 @@
 # CHANGELOG
+## 2026-09-25 — Test-Isolation strukturell erzwungen (P1 aus Review 2026-09-08)
+
+- Befund: Subprozess-Tests setzten nur `TOOL_TRACKER_DATA`; der Hook schrieb seine
+  Eigenlaufzeit über den Default in die echte `data/hook_latency.jsonl`, und
+  `test_rotation` (`TOOL_TRACKER_MAX_BYTES=100`) konnte sie seit der Latenz-Rotation
+  zerstückeln. Die volle Suite lief deshalb seit 08.09. nicht mehr.
+- `tests/conftest.py` (NEU): autouse-Fixture setzt `TOOL_TRACKER_DATA` und
+  `TOOL_TRACKER_LATENCY` pro Test auf einen eigenen tmp-Ordner (Subprozesse erben das
+  per `dict(os.environ, …)`), dazu ein Poison-Guard vor und nach jedem Test auf den
+  real aufgelösten Hook-Pfad (Muster: Wiki `test-db-isolation`, dual-bridge `ff70df3`).
+- `tests/test_isolation_guard.py` (NEU): Regressionstest, vorher rot (Pfad = echte
+  `data/events.jsonl`), jetzt grün. Suite 278 passed / 6 skipped, `data/` per
+  Snapshot unverändert (45 Dateien, gleiche Größen).
+
 ## 2026-09-08 — Latency-JSONL rotiert
 
 - `log_latency()` rotiert `data/hook_latency.jsonl` jetzt mit derselben Schwelle
